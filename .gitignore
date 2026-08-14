@@ -1,0 +1,15 @@
+.venv/
+__pycache__/
+.pytest_cache/
+.coverage
+*.pyc
+.env
+deploy/*.env
+
+# Personal training data and local auth material
+data/manual_rpe.csv
+.garminconnect*
+
+# Upstream Garmin MCP checkout and broken move snapshot
+garmin-connect-mcp/
+garmin-connect-mcp.broken-move-20260809/
