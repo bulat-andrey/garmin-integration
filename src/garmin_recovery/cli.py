@@ -20,6 +20,9 @@ from .client import GarminMcpClient, GarminMcpError, GarminMcpToolError, format_
 from .telegram import TelegramNotificationError, send_telegram_message
 
 
+DEFAULT_PROFILE_DIR = Path.home() / ".config" / "garmin-recovery" / "profiles"
+
+
 def analyze_recovery_main() -> None:
     parser = argparse.ArgumentParser(description="Analyze today's recovery from Garmin + manual RPE.")
     parser.add_argument("--date", default=date.today().isoformat(), help="Target date in YYYY-MM-DD format.")
@@ -70,6 +73,11 @@ def send_telegram_recovery_main() -> None:
     parser.add_argument("--token", default=None, help="Telegram bot token. Defaults to TELEGRAM_BOT_TOKEN.")
     parser.add_argument("--chat-id", default=None, help="Telegram chat ID. Defaults to TELEGRAM_CHAT_ID.")
     parser.add_argument(
+        "--profile",
+        default=None,
+        help="Optional profile name. Loads ~/.config/garmin-recovery/profiles/<name>.env before sending.",
+    )
+    parser.add_argument(
         "--athlete-name",
         default=None,
         help="Optional athlete name for the Telegram title. Defaults to ATHLETE_NAME.",
@@ -82,6 +90,7 @@ def send_telegram_recovery_main() -> None:
             rpe_file=Path(args.rpe_file),
             token=args.token,
             chat_id=args.chat_id,
+            profile=args.profile,
             athlete_name=args.athlete_name,
             dry_run=args.dry_run,
         )
@@ -173,9 +182,13 @@ async def _run_send_telegram_recovery(
     rpe_file: Path,
     token: str | None,
     chat_id: str | None,
+    profile: str | None,
     athlete_name: str | None,
     dry_run: bool,
 ) -> None:
+    if profile:
+        _load_profile_environment(profile)
+
     result = await _collect_recovery_result(target_date, rpe_file)
     resolved_athlete_name = athlete_name or environ.get("ATHLETE_NAME")
     message = _format_recovery_telegram_message(target_date, result, resolved_athlete_name)
@@ -270,3 +283,16 @@ def _format_recovery_telegram_message(
     lines.append("")
     lines.append("Heuristic only, not medical advice.")
     return "\n".join(lines)
+
+
+def _load_profile_environment(profile: str, profile_dir: Path = DEFAULT_PROFILE_DIR) -> None:
+    profile_path = profile_dir / f"{profile}.env"
+    if not profile_path.exists():
+        raise SystemExit(f"Profile env file not found: {profile_path}")
+
+    for raw_line in profile_path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        environ[key.strip()] = value.strip()

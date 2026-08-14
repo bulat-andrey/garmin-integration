@@ -1,4 +1,5 @@
-from garmin_recovery.analysis import analyze_recovery, calculate_srpe
+from garmin_recovery.analysis import RecoveryResult, analyze_recovery, calculate_srpe
+from garmin_recovery.cli import _format_recovery_telegram_message
 from garmin_recovery.client import GarminActivity
 
 
@@ -80,3 +81,17 @@ def test_recent_strength_session_avoids_back_to_back_strength_recommendation() -
     assert result.color == "GREEN"
     assert result.recommendation == "C) normal aerobic training"
     assert any("back-to-back strength" in reason for reason in result.reasons)
+
+
+def test_telegram_message_includes_athlete_name_when_provided() -> None:
+    result = RecoveryResult(
+        color="GREEN",
+        recommendation="C) normal aerobic training",
+        score=0,
+        reasons=["Recovered well."],
+        context_lines=["Sleep: 8.0h"],
+    )
+
+    message = _format_recovery_telegram_message("2026-08-14", result, "Vika")
+
+    assert "Garmin recovery for Vika - 2026-08-14" in message

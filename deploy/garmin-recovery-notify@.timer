@@ -1,0 +1,10 @@
+[Unit]
+Description=Send Garmin recovery report every day at 08:10 Europe/Warsaw for %i
+
+[Timer]
+OnCalendar=*-*-* 08:10:00 Europe/Warsaw
+Persistent=true
+Unit=garmin-recovery-notify@%i.service
+
+[Install]
+WantedBy=timers.target

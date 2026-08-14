@@ -164,6 +164,13 @@ uv run send-telegram-recovery
 The command reuses the same recovery heuristic as `analyze-recovery`, but formats it for a Telegram message.
 If `ATHLETE_NAME` is set, the title becomes `Garmin recovery for <name>`.
 
+You can also use named profiles:
+
+```powershell
+uv run send-telegram-recovery --profile andrei
+uv run send-telegram-recovery --profile vika --dry-run
+```
+
 ## Hetzner deployment
 
 One simple approach for a Linux desktop or dev box is:
@@ -206,6 +213,17 @@ cp deploy/telegram.env.example ~/.config/garmin-recovery/telegram.env
 chmod 600 ~/.config/garmin-recovery/telegram.env
 ```
 
+For multiple people, use one env file per profile:
+
+```bash
+mkdir -p ~/.config/garmin-recovery/profiles
+cp deploy/profile.env.example ~/.config/garmin-recovery/profiles/andrei.env
+cp deploy/profile.env.example ~/.config/garmin-recovery/profiles/vika.env
+chmod 600 ~/.config/garmin-recovery/profiles/*.env
+```
+
+Each profile can point to a different Garmin MCP config and a different Telegram chat.
+
 ## Daily 08:10 notification
 
 This repo includes `systemd --user` templates in `deploy/`.
@@ -219,6 +237,16 @@ cp deploy/garmin-recovery-notify.timer ~/.config/systemd/user/
 systemctl --user daemon-reload
 systemctl --user enable --now garmin-recovery-notify.timer
 systemctl --user list-timers garmin-recovery-notify.timer
+```
+
+For per-person timers, use the templated units:
+
+```bash
+cp deploy/garmin-recovery-notify@.service ~/.config/systemd/user/
+cp deploy/garmin-recovery-notify@.timer ~/.config/systemd/user/
+systemctl --user daemon-reload
+systemctl --user enable --now garmin-recovery-notify@andrei.timer
+systemctl --user enable --now garmin-recovery-notify@vika.timer
 ```
 
 The timer uses:
