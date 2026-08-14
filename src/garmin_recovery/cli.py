@@ -69,6 +69,11 @@ def send_telegram_recovery_main() -> None:
     parser.add_argument("--rpe-file", default=str(DEFAULT_RPE_PATH), help="Path to the manual RPE CSV.")
     parser.add_argument("--token", default=None, help="Telegram bot token. Defaults to TELEGRAM_BOT_TOKEN.")
     parser.add_argument("--chat-id", default=None, help="Telegram chat ID. Defaults to TELEGRAM_CHAT_ID.")
+    parser.add_argument(
+        "--athlete-name",
+        default=None,
+        help="Optional athlete name for the Telegram title. Defaults to ATHLETE_NAME.",
+    )
     parser.add_argument("--dry-run", action="store_true", help="Print the message instead of sending it.")
     args = parser.parse_args()
     asyncio.run(
@@ -77,6 +82,7 @@ def send_telegram_recovery_main() -> None:
             rpe_file=Path(args.rpe_file),
             token=args.token,
             chat_id=args.chat_id,
+            athlete_name=args.athlete_name,
             dry_run=args.dry_run,
         )
     )
@@ -167,10 +173,12 @@ async def _run_send_telegram_recovery(
     rpe_file: Path,
     token: str | None,
     chat_id: str | None,
+    athlete_name: str | None,
     dry_run: bool,
 ) -> None:
     result = await _collect_recovery_result(target_date, rpe_file)
-    message = _format_recovery_telegram_message(target_date, result)
+    resolved_athlete_name = athlete_name or environ.get("ATHLETE_NAME")
+    message = _format_recovery_telegram_message(target_date, result, resolved_athlete_name)
 
     if dry_run:
         print(message)
@@ -239,9 +247,14 @@ def _format_recovery_output(result) -> list[str]:
     return lines
 
 
-def _format_recovery_telegram_message(target_date: str, result) -> str:
+def _format_recovery_telegram_message(
+    target_date: str,
+    result,
+    athlete_name: str | None = None,
+) -> str:
+    title = f"Garmin recovery for {athlete_name}" if athlete_name else "Garmin recovery"
     lines = [
-        f"Garmin recovery for {target_date}",
+        f"{title} - {target_date}",
         f"Status: {result.color}",
         f"Today: {result.recommendation}",
     ]

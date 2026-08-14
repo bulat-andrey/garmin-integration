@@ -145,16 +145,24 @@ TELEGRAM_BOT_TOKEN
 TELEGRAM_CHAT_ID
 ```
 
+Optional:
+
+```text
+ATHLETE_NAME
+```
+
 Example:
 
 ```powershell
 $env:TELEGRAM_BOT_TOKEN="123456:abc"
 $env:TELEGRAM_CHAT_ID="123456789"
+$env:ATHLETE_NAME="Andrei"
 uv run send-telegram-recovery --dry-run
 uv run send-telegram-recovery
 ```
 
 The command reuses the same recovery heuristic as `analyze-recovery`, but formats it for a Telegram message.
+If `ATHLETE_NAME` is set, the title becomes `Garmin recovery for <name>`.
 
 ## Hetzner deployment
 
