@@ -305,7 +305,7 @@ def _format_recovery_telegram_message(
             lines.append(f"- {reason}")
     lines.append("")
     lines.append("Context:")
-    for line in result.context_lines[:6]:
+    for line in _select_context_lines_for_message(result.context_lines, limit=8):
         lines.append(f"- {line}")
     lines.append("")
     lines.append("Heuristic only, not medical advice.")
@@ -330,7 +330,7 @@ def _format_recovery_telegram_message_ru(
             lines.append(f"- {_translate_reason_ru(reason)}")
     lines.append("")
     lines.append("Контекст:")
-    for line in result.context_lines[:8]:
+    for line in _select_context_lines_for_message(result.context_lines, limit=10):
         lines.append(f"- {_translate_context_line_ru(line)}")
     lines.append("")
     lines.append("Это не медицинская рекомендация, а тренировочная эвристика.")
@@ -353,6 +353,37 @@ def _load_profile_environment(profile: str, profile_dir: Path = DEFAULT_PROFILE_
 def _env_flag(name: str) -> bool:
     value = (environ.get(name) or "").strip().lower()
     return value in {"1", "true", "yes", "on"}
+
+
+def _select_context_lines_for_message(lines: list[str], limit: int) -> list[str]:
+    priority_prefixes = (
+        "Training focus: ",
+        "Garmin training status: ",
+        "Menstrual cycle context: ",
+        "Garmin HRV status: ",
+    )
+    prioritized: list[str] = []
+    regular: list[str] = []
+    for line in lines:
+        if any(line.startswith(prefix) for prefix in priority_prefixes):
+            prioritized.append(line)
+        else:
+            regular.append(line)
+
+    selected: list[str] = []
+    for line in regular:
+        if len(selected) >= limit:
+            break
+        selected.append(line)
+
+    for line in prioritized:
+        if line in selected:
+            continue
+        if len(selected) < limit:
+            selected.append(line)
+        else:
+            selected[-1] = line
+    return selected
 
 
 def _translate_color_ru(value: str) -> str:
