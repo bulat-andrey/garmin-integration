@@ -149,6 +149,8 @@ Optional:
 
 ```text
 ATHLETE_NAME
+MESSAGE_LANGUAGE
+ENABLE_WOMENS_HEALTH
 ```
 
 Example:
@@ -157,12 +159,15 @@ Example:
 $env:TELEGRAM_BOT_TOKEN="123456:abc"
 $env:TELEGRAM_CHAT_ID="123456789"
 $env:ATHLETE_NAME="Andrei"
+$env:MESSAGE_LANGUAGE="ru"
 uv run send-telegram-recovery --dry-run
 uv run send-telegram-recovery
 ```
 
 The command reuses the same recovery heuristic as `analyze-recovery`, but formats it for a Telegram message.
 If `ATHLETE_NAME` is set, the title becomes `Garmin recovery for <name>`.
+If `MESSAGE_LANGUAGE=ru`, the Telegram text is sent in Russian.
+If `ENABLE_WOMENS_HEALTH=true`, the command also queries Garmin women's health data and includes menstrual-cycle context when Garmin returns it.
 
 You can also use named profiles:
 
@@ -223,6 +228,13 @@ chmod 600 ~/.config/garmin-recovery/profiles/*.env
 ```
 
 Each profile can point to a different Garmin MCP config and a different Telegram chat.
+For Vika, set:
+
+```text
+ATHLETE_NAME=Vika
+MESSAGE_LANGUAGE=ru
+ENABLE_WOMENS_HEALTH=true
+```
 
 ## Daily 08:10 notification
 

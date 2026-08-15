@@ -95,3 +95,24 @@ def test_telegram_message_includes_athlete_name_when_provided() -> None:
     message = _format_recovery_telegram_message("2026-08-14", result, "Vika")
 
     assert "Garmin recovery for Vika - 2026-08-14" in message
+
+
+def test_russian_telegram_message_translates_core_fields() -> None:
+    result = RecoveryResult(
+        color="GREEN",
+        recommendation="C) normal aerobic training",
+        score=0,
+        reasons=["A recent strength session was detected, so back-to-back strength is deprioritized."],
+        context_lines=[
+            "Sleep: 8.0h vs baseline 7.5h",
+            "Training focus: high aerobic shortage",
+            "Garmin training status: productive",
+        ],
+    )
+
+    message = _format_recovery_telegram_message("2026-08-15", result, "Andrei", "ru")
+
+    assert "Garmin: восстановление для Andrei - 2026-08-15" in message
+    assert "Сегодня: C) обычная аэробная тренировка" in message
+    assert "Training focus: не хватает high aerobic нагрузки" in message
+    assert "Статус тренинга Garmin: продуктивно" in message

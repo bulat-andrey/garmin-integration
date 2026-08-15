@@ -78,6 +78,11 @@ def send_telegram_recovery_main() -> None:
         help="Optional profile name. Loads ~/.config/garmin-recovery/profiles/<name>.env before sending.",
     )
     parser.add_argument(
+        "--lang",
+        default=None,
+        help="Message language, for example 'ru' or 'en'. Defaults to MESSAGE_LANGUAGE or 'en'.",
+    )
+    parser.add_argument(
         "--athlete-name",
         default=None,
         help="Optional athlete name for the Telegram title. Defaults to ATHLETE_NAME.",
@@ -91,6 +96,7 @@ def send_telegram_recovery_main() -> None:
             token=args.token,
             chat_id=args.chat_id,
             profile=args.profile,
+            lang=args.lang,
             athlete_name=args.athlete_name,
             dry_run=args.dry_run,
         )
@@ -183,6 +189,7 @@ async def _run_send_telegram_recovery(
     token: str | None,
     chat_id: str | None,
     profile: str | None,
+    lang: str | None,
     athlete_name: str | None,
     dry_run: bool,
 ) -> None:
@@ -191,7 +198,13 @@ async def _run_send_telegram_recovery(
 
     result = await _collect_recovery_result(target_date, rpe_file)
     resolved_athlete_name = athlete_name or environ.get("ATHLETE_NAME")
-    message = _format_recovery_telegram_message(target_date, result, resolved_athlete_name)
+    resolved_lang = (lang or environ.get("MESSAGE_LANGUAGE") or "en").lower()
+    message = _format_recovery_telegram_message(
+        target_date,
+        result,
+        resolved_athlete_name,
+        resolved_lang,
+    )
 
     if dry_run:
         print(message)
@@ -218,6 +231,7 @@ async def _collect_recovery_result(target_date: str, rpe_file: Path):
     start = target - timedelta(days=6)
     start_date = format_date(start)
     end_date = format_date(target)
+    womens_health_today = None
 
     try:
         async with GarminMcpClient() as garmin:
@@ -226,6 +240,14 @@ async def _collect_recovery_result(target_date: str, rpe_file: Path):
             health_range = await garmin.get_health_range(start_date, end_date)
             sleep_range = await garmin.get_sleep_range(start_date, end_date)
             activities = await garmin.get_recent_activities_with_details(start_date, end_date)
+            if _env_flag("ENABLE_WOMENS_HEALTH"):
+                try:
+                    womens_health_today = await garmin.call_json(
+                        "query_womens_health",
+                        {"data_type": "menstrual", "date": target_date},
+                    )
+                except (GarminMcpError, GarminMcpToolError):
+                    womens_health_today = None
     except (GarminMcpError, GarminMcpToolError) as exc:
         raise SystemExit(f"Garmin MCP error: {exc}") from exc
 
@@ -238,6 +260,7 @@ async def _collect_recovery_result(target_date: str, rpe_file: Path):
         sleep_range=sleep_range,
         activities=activities,
         rpe_entries=rpe_entries,
+        womens_health_today=womens_health_today,
     )
 
 
@@ -264,7 +287,11 @@ def _format_recovery_telegram_message(
     target_date: str,
     result,
     athlete_name: str | None = None,
+    lang: str = "en",
 ) -> str:
+    if lang == "ru":
+        return _format_recovery_telegram_message_ru(target_date, result, athlete_name)
+
     title = f"Garmin recovery for {athlete_name}" if athlete_name else "Garmin recovery"
     lines = [
         f"{title} - {target_date}",
@@ -285,6 +312,31 @@ def _format_recovery_telegram_message(
     return "\n".join(lines)
 
 
+def _format_recovery_telegram_message_ru(
+    target_date: str,
+    result,
+    athlete_name: str | None = None,
+) -> str:
+    title = f"Garmin: восстановление для {athlete_name}" if athlete_name else "Garmin: восстановление"
+    lines = [
+        f"{title} - {target_date}",
+        f"Статус: {_translate_color_ru(result.color)}",
+        f"Сегодня: {_translate_recommendation_ru(result.recommendation)}",
+    ]
+    if result.reasons:
+        lines.append("")
+        lines.append("Почему:")
+        for reason in result.reasons[:4]:
+            lines.append(f"- {_translate_reason_ru(reason)}")
+    lines.append("")
+    lines.append("Контекст:")
+    for line in result.context_lines[:8]:
+        lines.append(f"- {_translate_context_line_ru(line)}")
+    lines.append("")
+    lines.append("Это не медицинская рекомендация, а тренировочная эвристика.")
+    return "\n".join(lines)
+
+
 def _load_profile_environment(profile: str, profile_dir: Path = DEFAULT_PROFILE_DIR) -> None:
     profile_path = profile_dir / f"{profile}.env"
     if not profile_path.exists():
@@ -296,3 +348,125 @@ def _load_profile_environment(profile: str, profile_dir: Path = DEFAULT_PROFILE_
             continue
         key, value = line.split("=", 1)
         environ[key.strip()] = value.strip()
+
+
+def _env_flag(name: str) -> bool:
+    value = (environ.get(name) or "").strip().lower()
+    return value in {"1", "true", "yes", "on"}
+
+
+def _translate_color_ru(value: str) -> str:
+    return {
+        "GREEN": "ЗЕЛЕНЫЙ",
+        "YELLOW": "ЖЕЛТЫЙ",
+        "RED": "КРАСНЫЙ",
+    }.get(value, value)
+
+
+def _translate_recommendation_ru(value: str) -> str:
+    return {
+        "A) recovery/rest": "A) восстановление / отдых",
+        "B) easy Zone 2": "B) легкая Zone 2",
+        "C) normal aerobic training": "C) обычная аэробная тренировка",
+        "D) strength training": "D) силовая тренировка",
+        "E) hard training": "E) тяжелая тренировка",
+    }.get(value, value)
+
+
+def _translate_reason_ru(value: str) -> str:
+    if value.startswith("Sleep was "):
+        return value.replace("Sleep was", "Сон был").replace("versus a recent baseline of", "по сравнению с недавней базой")
+    if value.startswith("Sleep score was low at "):
+        return value.replace("Sleep score was low at", "Оценка сна низкая:").replace("/100.", "/100.")
+    if value.startswith("Sleep score was fair at "):
+        return value.replace("Sleep score was fair at", "Оценка сна средняя:").replace("/100.", "/100.")
+    if value.startswith("Overnight HRV was suppressed at "):
+        return value.replace("Overnight HRV was suppressed at", "Ночная HRV снижена:").replace("versus", "против").replace("baseline.", "базы.")
+    if value.startswith("Overnight HRV was a bit below baseline at "):
+        return value.replace("Overnight HRV was a bit below baseline at", "Ночная HRV немного ниже базы:").replace("versus", "против").replace("ms.", "мс.")
+    if value.startswith("Resting HR was elevated at "):
+        return value.replace("Resting HR was elevated at", "Пульс покоя повышен:").replace("versus", "против").replace("baseline.", "базы.")
+    if value.startswith("Resting HR was mildly elevated at "):
+        return value.replace("Resting HR was mildly elevated at", "Пульс покоя слегка повышен:").replace("versus", "против").replace("bpm.", "уд/мин.")
+    if value.startswith("Body Battery at wake-up was low at "):
+        return value.replace("Body Battery at wake-up was low at", "Body Battery утром низкий:")
+    if value.startswith("Body Battery at wake-up was moderate at "):
+        return value.replace("Body Battery at wake-up was moderate at", "Body Battery утром средний:")
+    if value.startswith("Average stress was high at "):
+        return value.replace("Average stress was high at", "Средний стресс высокий:")
+    if value.startswith("Average stress was somewhat elevated at "):
+        return value.replace("Average stress was somewhat elevated at", "Средний стресс немного повышен:")
+    if value.startswith("Manual sRPE load is high: "):
+        return value.replace("Manual sRPE load is high:", "Ручная нагрузка sRPE высокая:")
+    if value.startswith("Manual sRPE load is building: "):
+        return value.replace("Manual sRPE load is building:", "Ручная нагрузка sRPE накапливается:")
+    if value.startswith("You are on a "):
+        return value.replace("You are on a", "Сейчас серия из").replace("-day meaningful training streak.", " дней значимых тренировок подряд.")
+    if value.startswith("Recent kite sessions are missing HR"):
+        return "В последних кайт-сессиях нет HR, поэтому Garmin, вероятно, занижает нагрузку."
+    if value.startswith("A recent strength session was detected"):
+        return "Недавно была силовая тренировка, поэтому подряд еще одну силовую сегодня лучше не ставить."
+    return value
+
+
+def _translate_context_line_ru(value: str) -> str:
+    if value.startswith("Training focus: "):
+        return f"Training focus: {_translate_focus_phrase_ru(value.removeprefix('Training focus: '))}"
+    if value.startswith("Garmin training status: "):
+        return f"Статус тренинга Garmin: {_translate_training_status_phrase_ru(value.removeprefix('Garmin training status: '))}"
+    if value.startswith("Menstrual cycle context: "):
+        return f"Контекст цикла: {_translate_menstrual_context_ru(value.removeprefix('Menstrual cycle context: '))}"
+
+    replacements = {
+        "Sleep: ": "Сон: ",
+        "Sleep score: ": "Оценка сна: ",
+        "Overnight HRV: ": "Ночная HRV: ",
+        "Resting HR: ": "Пульс покоя: ",
+        "Body Battery (wake/current): ": "Body Battery (утро/сейчас): ",
+        "Average stress: ": "Средний стресс: ",
+        "Recent load: ": "Недавняя нагрузка: ",
+        "Consecutive meaningful training days: ": "Дней значимых тренировок подряд: ",
+        "Recent strength session: ": "Последняя силовая: ",
+        "Recent kite sessions without HR: ": "Последние кайт-сессии без HR: ",
+        "Garmin HRV status: ": "Статус HRV Garmin: ",
+    }
+    for source, target in replacements.items():
+        if value.startswith(source):
+            translated = value.replace(source, target, 1)
+            return (
+                translated.replace("vs baseline", "vs база")
+                .replace("wake/current", "утро/сейчас")
+            )
+    return value
+
+
+def _translate_focus_phrase_ru(value: str) -> str:
+    return {
+        "high aerobic shortage": "не хватает high aerobic нагрузки",
+        "low aerobic shortage": "не хватает low aerobic нагрузки",
+        "anaerobic shortage": "не хватает anaerobic нагрузки",
+        "balanced": "баланс нормальный",
+    }.get(value, value)
+
+
+def _translate_training_status_phrase_ru(value: str) -> str:
+    return {
+        "productive": "продуктивно",
+        "maintaining": "поддержание формы",
+        "recovery": "восстановление",
+        "peaking": "выход на пик",
+        "strained": "перегрузка",
+        "unproductive": "непродуктивно",
+        "detraining": "детренированность",
+        "overreaching": "перенапряжение",
+    }.get(value, value)
+
+
+def _translate_menstrual_context_ru(value: str) -> str:
+    return (
+        value.replace("cycle day", "день цикла")
+        .replace("phase", "фаза")
+        .replace("active period", "активная менструация")
+        .replace("symptoms:", "симптомы:")
+        .replace("data available", "данные доступны")
+    )

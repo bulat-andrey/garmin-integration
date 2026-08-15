@@ -33,6 +33,9 @@ class RecoveryResult:
     score: int
     reasons: list[str]
     context_lines: list[str]
+    training_focus: str | None = None
+    training_status: str | None = None
+    menstrual_cycle_context: str | None = None
 
 
 @dataclass(slots=True)
@@ -246,7 +249,9 @@ def analyze_recovery(
     sleep_range: list[dict],
     activities: list[GarminActivity],
     rpe_entries: dict[int, RpeEntry],
+    womens_health_today: dict | None = None,
 ) -> RecoveryResult:
+    reference_now = datetime.combine(date.fromisoformat(target_date), datetime.max.time())
     stats = health_today.get("stats", {})
     sleep = sleep_today.get("sleep", {})
     daily_sleep = sleep.get("dailySleepDTO", {})
@@ -260,6 +265,9 @@ def analyze_recovery(
     body_battery_wake = _number_or_none(stats.get("bodyBatteryAtWakeTime"))
     body_battery_current = _number_or_none(stats.get("bodyBatteryMostRecentValue"))
     average_stress = _number_or_none(stats.get("averageStressLevel"))
+    training_focus = _extract_training_focus(health_today.get("training_status", {}))
+    training_status = _extract_training_status(health_today.get("training_status", {}))
+    menstrual_cycle_context = _extract_menstrual_cycle_context(womens_health_today)
 
     prior_sleep_hours = [
         _hours(item.get("sleep", {}).get("dailySleepDTO", {}).get("sleepTimeSeconds"))
@@ -286,7 +294,7 @@ def analyze_recovery(
     hrv_baseline = _safe_mean(prior_hrv)
     rhr_baseline = _number_or_none(stats.get("lastSevenDaysAvgRestingHeartRate")) or _safe_mean(prior_rhr)
 
-    loads = summarize_loads(activities, rpe_entries)
+    loads = summarize_loads(activities, rpe_entries, now=reference_now)
     streak = consecutive_training_days(activities, rpe_entries, date.fromisoformat(target_date))
     missing_hr_kite = [
         activity
@@ -297,9 +305,9 @@ def analyze_recovery(
         activity
         for activity in missing_hr_kite
         if (parse_garmin_datetime(activity.start_local) or datetime.min)
-        >= datetime.now() - timedelta(hours=72)
+        >= reference_now - timedelta(hours=72)
     ]
-    strength_context = recent_strength_context(activities)
+    strength_context = recent_strength_context(activities, now=reference_now)
 
     score = 0
     reasons: list[str] = []
@@ -444,6 +452,12 @@ def analyze_recovery(
         )
     if hrv_status:
         context_lines.append(f"Garmin HRV status: {hrv_status}")
+    if training_focus:
+        context_lines.append(f"Training focus: {training_focus}")
+    if training_status:
+        context_lines.append(f"Garmin training status: {training_status}")
+    if menstrual_cycle_context:
+        context_lines.append(f"Menstrual cycle context: {menstrual_cycle_context}")
 
     return RecoveryResult(
         color=color,
@@ -451,6 +465,9 @@ def analyze_recovery(
         score=score,
         reasons=reasons,
         context_lines=[line for line in context_lines if line],
+        training_focus=training_focus,
+        training_status=training_status,
+        menstrual_cycle_context=menstrual_cycle_context,
     )
 
 
@@ -603,3 +620,134 @@ def _format_duration_minutes(total_minutes: int) -> str:
 def _format_number(value: float) -> str:
     rounded = round(value, 1)
     return str(int(rounded)) if rounded.is_integer() else f"{rounded:.1f}"
+
+
+def _extract_training_focus(training_status: dict) -> str | None:
+    load_balance = training_status.get("mostRecentTrainingLoadBalance", {})
+    metrics_map = load_balance.get("metricsTrainingLoadBalanceDTOMap", {})
+    if not isinstance(metrics_map, dict) or not metrics_map:
+        return None
+
+    primary_metric = None
+    for metric in metrics_map.values():
+        if isinstance(metric, dict) and metric.get("primaryTrainingDevice"):
+            primary_metric = metric
+            break
+    if primary_metric is None:
+        primary_metric = next(
+            (metric for metric in metrics_map.values() if isinstance(metric, dict)),
+            None,
+        )
+    if primary_metric is None:
+        return None
+
+    phrase = primary_metric.get("trainingBalanceFeedbackPhrase")
+    if not phrase:
+        return None
+    return _normalize_garmin_phrase(str(phrase))
+
+
+def _extract_training_status(training_status: dict) -> str | None:
+    recent_status = training_status.get("mostRecentTrainingStatus", {})
+    latest_data = recent_status.get("latestTrainingStatusData", {})
+    if not isinstance(latest_data, dict) or not latest_data:
+        return None
+
+    primary_status = None
+    for item in latest_data.values():
+        if isinstance(item, dict) and item.get("primaryTrainingDevice"):
+            primary_status = item
+            break
+    if primary_status is None:
+        primary_status = next(
+            (item for item in latest_data.values() if isinstance(item, dict)),
+            None,
+        )
+    if primary_status is None:
+        return None
+
+    phrase = primary_status.get("trainingStatusFeedbackPhrase")
+    if not phrase:
+        return None
+    return _normalize_garmin_phrase(str(phrase))
+
+
+def _extract_menstrual_cycle_context(womens_health_today: dict | None) -> str | None:
+    if not womens_health_today:
+        return None
+
+    data = womens_health_today.get("data", {})
+    menstrual = data.get("menstrual_data")
+    if not isinstance(menstrual, dict) or not menstrual:
+        return None
+
+    parts: list[str] = []
+
+    cycle_day = next(
+        (
+            menstrual.get(key)
+            for key in ("cycleDay", "dayOfCycle", "cycle_day", "day_in_cycle")
+            if menstrual.get(key) is not None
+        ),
+        None,
+    )
+    phase = next(
+        (
+            menstrual.get(key)
+            for key in ("phase", "cyclePhase", "currentPhase", "menstrualPhase")
+            if menstrual.get(key)
+        ),
+        None,
+    )
+    if cycle_day is not None:
+        parts.append(f"cycle day {cycle_day}")
+    if phase:
+        parts.append(f"phase {str(phase).replace('_', ' ').lower()}")
+
+    active_period_keys = (
+        "isPeriodDay",
+        "onPeriod",
+        "currentlyMenstruating",
+        "isBleeding",
+    )
+    if any(bool(menstrual.get(key)) for key in active_period_keys):
+        parts.append("active period")
+
+    symptoms = next(
+        (
+            menstrual.get(key)
+            for key in ("symptoms", "symptomCategories", "loggedSymptoms")
+            if menstrual.get(key)
+        ),
+        None,
+    )
+    if isinstance(symptoms, list) and symptoms:
+        normalized = ", ".join(str(item).replace("_", " ").lower() for item in symptoms[:3])
+        parts.append(f"symptoms: {normalized}")
+
+    if not parts:
+        return "data available"
+    return "; ".join(parts)
+
+
+def _normalize_garmin_phrase(value: str) -> str:
+    trimmed = value.strip()
+    if not trimmed:
+        return trimmed
+
+    parts = [part for part in trimmed.split("_") if part and not part.isdigit()]
+    normalized = " ".join(part.lower() for part in parts)
+    replacements = {
+        "aerobic high shortage": "high aerobic shortage",
+        "aerobic low shortage": "low aerobic shortage",
+        "anaerobic shortage": "anaerobic shortage",
+        "productive": "productive",
+        "maintaining": "maintaining",
+        "recovery": "recovery",
+        "peaking": "peaking",
+        "detraining": "detraining",
+        "strained": "strained",
+        "unproductive": "unproductive",
+        "overreaching": "overreaching",
+    }
+    return replacements.get(normalized, normalized)
