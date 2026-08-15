@@ -330,7 +330,7 @@ def _format_recovery_telegram_message_ru(
             lines.append(f"- {_translate_reason_ru(reason)}")
     lines.append("")
     lines.append("Контекст:")
-    for line in _select_context_lines_for_message(result.context_lines, limit=10):
+    for line in _select_context_lines_for_message(result.context_lines, limit=12):
         lines.append(f"- {_translate_context_line_ru(line)}")
     lines.append("")
     lines.append("Это не медицинская рекомендация, а тренировочная эвристика.")
