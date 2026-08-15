@@ -520,7 +520,7 @@ def _translate_reason_ru(value: str) -> str:
 
 def _translate_context_line_ru(value: str) -> str:
     if value.startswith("Training focus: "):
-        return f"Training focus: {_translate_focus_phrase_ru(value.removeprefix('Training focus: '))}"
+        return f"Фокус тренинга: {_translate_focus_phrase_ru(value.removeprefix('Training focus: '))}"
     if value.startswith("Garmin training status: "):
         return f"Статус тренинга Garmin: {_translate_training_status_phrase_ru(value.removeprefix('Garmin training status: '))}"
     if value.startswith("Menstrual cycle context: "):
@@ -556,9 +556,9 @@ def _translate_context_line_ru(value: str) -> str:
 
 def _translate_focus_phrase_ru(value: str) -> str:
     return {
-        "high aerobic shortage": "не хватает high aerobic нагрузки",
-        "low aerobic shortage": "не хватает low aerobic нагрузки",
-        "anaerobic shortage": "не хватает anaerobic нагрузки",
+        "high aerobic shortage": "не хватает высокоаэробной нагрузки",
+        "low aerobic shortage": "не хватает низкоаэробной нагрузки",
+        "anaerobic shortage": "не хватает анаэробной нагрузки",
         "balanced": "баланс нормальный",
     }.get(value, value)
 
@@ -577,10 +577,16 @@ def _translate_training_status_phrase_ru(value: str) -> str:
 
 
 def _translate_menstrual_context_ru(value: str) -> str:
-    return (
-        value.replace("cycle day", "день цикла")
-        .replace("phase", "фаза")
-        .replace("active period", "активная менструация")
-        .replace("symptoms:", "симптомы:")
-        .replace("data available", "данные доступны")
-    )
+    translated = value.replace("cycle day", "день цикла")
+    translated = translated.replace("active period", "активная менструация")
+    translated = translated.replace("symptoms:", "симптомы:")
+    translated = translated.replace("data available", "данные доступны")
+    translated = translated.replace("phase menstrual", "менструальная фаза")
+    translated = translated.replace("phase follicular", "фолликулярная фаза")
+    translated = translated.replace("phase ovulatory", "овуляторная фаза")
+    translated = translated.replace("phase luteal", "лютеиновая фаза")
+    translated = translated.replace("cycle type irregular", "нерегулярный цикл")
+    translated = translated.replace("cycle type regular", "регулярный цикл")
+    translated = re.sub(r"\bphase\b", "фаза", translated)
+    translated = re.sub(r"\bcycle type\b", "тип цикла", translated)
+    return translated

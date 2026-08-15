@@ -7,7 +7,7 @@ from contextlib import AsyncExitStack
 from dataclasses import dataclass, replace
 from datetime import date, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, TextIO
 
 from mcp.client.session import ClientSession
 from mcp.client.stdio import StdioServerParameters, stdio_client
@@ -175,6 +175,7 @@ class GarminMcpClient:
         self._config = config or load_garmin_server_config()
         self._stack: AsyncExitStack | None = None
         self._session: ClientSession | None = None
+        self._errlog: TextIO | None = None
 
     async def __aenter__(self) -> "GarminMcpClient":
         server = StdioServerParameters(
@@ -184,7 +185,9 @@ class GarminMcpClient:
         )
 
         self._stack = AsyncExitStack()
-        read, write = await self._stack.enter_async_context(stdio_client(server))
+        # Suppress noisy FastMCP banners and auth chatter during normal CLI use.
+        self._errlog = open(os.devnull, "w", encoding="utf-8")
+        read, write = await self._stack.enter_async_context(stdio_client(server, errlog=self._errlog))
         self._session = await self._stack.enter_async_context(ClientSession(read, write))
         await self._session.initialize()
         return self
@@ -192,8 +195,11 @@ class GarminMcpClient:
     async def __aexit__(self, exc_type: Any, exc: Any, tb: Any) -> None:
         if self._stack is not None:
             await self._stack.aclose()
+        if self._errlog is not None:
+            self._errlog.close()
         self._stack = None
         self._session = None
+        self._errlog = None
 
     async def call_json(self, tool_name: str, arguments: dict[str, Any]) -> dict[str, Any]:
         if self._session is None:

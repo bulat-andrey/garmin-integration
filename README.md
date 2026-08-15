@@ -266,10 +266,34 @@ systemctl --user enable --now garmin-recovery-notify@andrei.timer
 systemctl --user enable --now garmin-recovery-notify@vika.timer
 ```
 
-The timer uses:
+The template defaults to:
 
 ```text
 OnCalendar=*-*-* 08:10:00 Europe/Warsaw
+```
+
+If each profile should fire at a different time, add a per-instance override:
+
+```bash
+systemctl --user edit garmin-recovery-notify@andrei.timer
+```
+
+```ini
+[Timer]
+OnCalendar=
+OnCalendar=*-*-* 08:20:00 Europe/Warsaw
+```
+
+And for Vika:
+
+```bash
+systemctl --user edit garmin-recovery-notify@vika.timer
+```
+
+```ini
+[Timer]
+OnCalendar=
+OnCalendar=*-*-* 08:00:00 Europe/Warsaw
 ```
 
 If the Hetzner desktop may stay logged out, also enable lingering for the user so the timer can run without an active session:

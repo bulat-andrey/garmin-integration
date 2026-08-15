@@ -1,5 +1,5 @@
 [Unit]
-Description=Send Garmin recovery report every day at 08:10 Europe/Warsaw for %i
+Description=Daily Garmin recovery timer for %i (default 08:10 Europe/Warsaw)
 
 [Timer]
 OnCalendar=*-*-* 08:10:00 Europe/Warsaw

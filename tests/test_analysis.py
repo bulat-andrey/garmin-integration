@@ -176,6 +176,23 @@ def test_russian_telegram_message_translates_core_fields() -> None:
     assert "productive" not in message
     assert "6 предыдущих ночей" in message
     assert '"выше базы, это хорошо"' in message
+    assert "Фокус тренинга: не хватает высокоаэробной нагрузки" in message
+
+
+def test_russian_telegram_message_translates_menstrual_context_fully() -> None:
+    result = RecoveryResult(
+        color="GREEN",
+        recommendation="C) normal aerobic training",
+        score=0,
+        reasons=[],
+        context_lines=[
+            "Menstrual cycle context: cycle day 2; phase menstrual; cycle type irregular; active period",
+        ],
+    )
+
+    message = _format_recovery_telegram_message("2026-08-15", result, "Vika", "ru")
+
+    assert "Контекст цикла: день цикла 2; менструальная фаза; нерегулярный цикл; активная менструация" in message
 
 
 def test_context_lines_add_short_baseline_interpretation() -> None:
