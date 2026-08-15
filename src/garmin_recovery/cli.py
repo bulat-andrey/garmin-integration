@@ -442,6 +442,14 @@ def _postprocess_ru_text(value: str) -> str:
             "\u0434\u043d\u0438 \u0434\u043b\u044f \u0441\u0438\u043b\u043e\u0432\u043e\u0439: ",
         )
         .replace("today is", "\u0441\u0435\u0433\u043e\u0434\u043d\u044f")
+        .replace(
+            "Early-cycle menstrual context was detected, so hard training is deprioritized unless subjective feel is clearly excellent.",
+            "\u0420\u0430\u043d\u043d\u0438\u0439 \u044d\u0442\u0430\u043f \u0446\u0438\u043a\u043b\u0430 \u0443\u0447\u0442\u0435\u043d, "
+            "\u043f\u043e\u044d\u0442\u043e\u043c\u0443 \u0442\u044f\u0436\u0435\u043b\u0430\u044f \u0442\u0440\u0435\u043d\u0438\u0440"
+            "\u043e\u0432\u043a\u0430 \u0441\u0435\u0433\u043e\u0434\u043d\u044f \u0434\u0435\u043f\u0440\u0438\u043e\u0440\u0438\u0442"
+            "\u0438\u0437\u0438\u0440\u043e\u0432\u0430\u043d\u0430, \u0435\u0441\u043b\u0438 \u0441\u0430\u043c\u043e\u0447\u0443\u0432"
+            "\u0441\u0442\u0432\u0438\u0435 \u043d\u0435 \u043e\u0442\u043b\u0438\u0447\u043d\u043e\u0435.",
+        )
     )
     translated = re.sub(
         r"from (\d+) prior nights",

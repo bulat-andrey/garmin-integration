@@ -196,3 +196,88 @@ def test_context_selection_keeps_priority_lines_visible() -> None:
     assert "Garmin training status: productive" in selected
     assert "Menstrual cycle context: luteal phase" in selected
     assert "Garmin HRV status: balanced" in selected
+
+
+def test_menstrual_day_summary_is_rendered_and_deprioritizes_hard_training() -> None:
+    result = analyze_recovery(
+        target_date="2026-08-15",
+        health_today={
+            "stats": {
+                "restingHeartRate": 49,
+                "lastSevenDaysAvgRestingHeartRate": 53,
+                "bodyBatteryAtWakeTime": 100,
+                "bodyBatteryMostRecentValue": 40,
+                "averageStressLevel": 27,
+            },
+            "training_status": {
+                "mostRecentTrainingLoadBalance": {
+                    "metricsTrainingLoadBalanceDTOMap": {
+                        "device": {
+                            "trainingBalanceFeedbackPhrase": "AEROBIC_HIGH_SHORTAGE",
+                            "primaryTrainingDevice": True,
+                        }
+                    }
+                },
+                "mostRecentTrainingStatus": {
+                    "latestTrainingStatusData": {
+                        "device": {
+                            "trainingStatusFeedbackPhrase": "RECOVERY_2",
+                            "primaryTrainingDevice": True,
+                        }
+                    }
+                },
+            },
+        },
+        sleep_today={
+            "sleep": {
+                "dailySleepDTO": {
+                    "sleepTimeSeconds": 31020,
+                    "sleepScores": {"overall": {"value": 94}},
+                },
+                "avgOvernightHrv": 58,
+                "hrvStatus": "BALANCED",
+                "restingHeartRate": 49,
+            }
+        },
+        health_range=[
+            {"date": {"date": "2026-08-14"}, "stats": {"restingHeartRate": 53}},
+            {"date": {"date": "2026-08-13"}, "stats": {"restingHeartRate": 53}},
+        ],
+        sleep_range=[
+            {
+                "date": {"date": "2026-08-14"},
+                "sleep": {
+                    "dailySleepDTO": {"sleepTimeSeconds": 27000, "sleepScores": {"overall": {"value": 80}}},
+                    "avgOvernightHrv": 53,
+                },
+            },
+            {
+                "date": {"date": "2026-08-13"},
+                "sleep": {
+                    "dailySleepDTO": {"sleepTimeSeconds": 28080, "sleepScores": {"overall": {"value": 81}}},
+                    "avgOvernightHrv": 52,
+                },
+            },
+        ],
+        activities=[],
+        rpe_entries={},
+        womens_health_today={
+            "data": {
+                "menstrual_data": {
+                    "daySummary": {
+                        "dayInCycle": 2,
+                        "currentPhase": 1,
+                        "cycleType": "IRREGULAR",
+                    }
+                }
+            }
+        },
+    )
+
+    assert result.color == "GREEN"
+    assert result.recommendation == "C) normal aerobic training"
+    assert any("Early-cycle menstrual context" in reason for reason in result.reasons)
+    assert any(
+        line == "Menstrual cycle context: cycle day 2; phase menstrual; cycle type irregular; active period"
+        for line in result.context_lines
+    )

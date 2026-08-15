@@ -45,6 +45,14 @@ class RecentStrengthContext:
     latest_strength_date: str | None
 
 
+@dataclass(slots=True)
+class MenstrualCycleDetails:
+    context: str | None
+    cycle_day: int | None
+    phase: str | None
+    active_period: bool
+
+
 WEEKDAY_NAMES = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
 
 
@@ -272,7 +280,8 @@ def analyze_recovery(
     average_stress = _number_or_none(stats.get("averageStressLevel"))
     training_focus = _extract_training_focus(health_today.get("training_status", {}))
     training_status = _extract_training_status(health_today.get("training_status", {}))
-    menstrual_cycle_context = _extract_menstrual_cycle_context(womens_health_today)
+    menstrual_cycle = _extract_menstrual_cycle_details(womens_health_today)
+    menstrual_cycle_context = menstrual_cycle.context
 
     prior_sleep_hours = [
         _hours(_dict_or_empty(_dict_or_empty(item).get("sleep")).get("dailySleepDTO", {}).get("sleepTimeSeconds"))
@@ -429,6 +438,11 @@ def analyze_recovery(
             recommendation = "C) normal aerobic training"
             reasons.append(
                 "A recent strength session was detected, so back-to-back strength is deprioritized."
+            )
+        elif _should_deprioritize_hard_training_for_cycle(menstrual_cycle):
+            recommendation = "C) normal aerobic training"
+            reasons.append(
+                "Early-cycle menstrual context was detected, so hard training is deprioritized unless subjective feel is clearly excellent."
             )
         elif ready_for_hard:
             recommendation = "E) hard training"
@@ -658,6 +672,13 @@ def _format_number(value: float) -> str:
     return str(int(rounded)) if rounded.is_integer() else f"{rounded:.1f}"
 
 
+def _int_or_none(value: object) -> int | None:
+    try:
+        return int(value) if value is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
 def _extract_training_focus(training_status: dict | None) -> str | None:
     if not isinstance(training_status, dict):
         return None
@@ -716,37 +737,67 @@ def _extract_training_status(training_status: dict | None) -> str | None:
     return _normalize_garmin_phrase(str(phrase))
 
 
-def _extract_menstrual_cycle_context(womens_health_today: dict | None) -> str | None:
+def _extract_menstrual_cycle_details(
+    womens_health_today: dict | None,
+) -> MenstrualCycleDetails:
     if not womens_health_today:
-        return None
+        return MenstrualCycleDetails(
+            context=None,
+            cycle_day=None,
+            phase=None,
+            active_period=False,
+        )
 
-    data = womens_health_today.get("data", {})
-    menstrual = data.get("menstrual_data")
+    data = _dict_or_empty(womens_health_today.get("data"))
+    menstrual = _dict_or_empty(data.get("menstrual_data"))
     if not isinstance(menstrual, dict) or not menstrual:
-        return None
+        return MenstrualCycleDetails(
+            context=None,
+            cycle_day=None,
+            phase=None,
+            active_period=False,
+        )
+
+    summary = _dict_or_empty(menstrual.get("daySummary"))
+    day_log = _dict_or_empty(menstrual.get("dayLog"))
 
     parts: list[str] = []
 
     cycle_day = next(
         (
-            menstrual.get(key)
-            for key in ("cycleDay", "dayOfCycle", "cycle_day", "day_in_cycle")
-            if menstrual.get(key) is not None
+            source.get(key)
+            for source in (summary, menstrual, day_log)
+            for key in ("dayInCycle", "cycleDay", "dayOfCycle", "cycle_day", "day_in_cycle")
+            if source.get(key) is not None
         ),
         None,
     )
-    phase = next(
+    phase_value = next(
         (
-            menstrual.get(key)
+            source.get(key)
+            for source in (summary, menstrual, day_log)
             for key in ("phase", "cyclePhase", "currentPhase", "menstrualPhase")
-            if menstrual.get(key)
+            if source.get(key) is not None
         ),
         None,
     )
+    phase = _normalize_menstrual_phase(phase_value)
     if cycle_day is not None:
         parts.append(f"cycle day {cycle_day}")
     if phase:
-        parts.append(f"phase {str(phase).replace('_', ' ').lower()}")
+        parts.append(f"phase {phase}")
+
+    cycle_type = next(
+        (
+            source.get(key)
+            for source in (summary, menstrual, day_log)
+            for key in ("cycleType", "cycle_type")
+            if source.get(key)
+        ),
+        None,
+    )
+    if cycle_type:
+        parts.append(f"cycle type {str(cycle_type).replace('_', ' ').lower()}")
 
     active_period_keys = (
         "isPeriodDay",
@@ -754,14 +805,20 @@ def _extract_menstrual_cycle_context(womens_health_today: dict | None) -> str | 
         "currentlyMenstruating",
         "isBleeding",
     )
-    if any(bool(menstrual.get(key)) for key in active_period_keys):
+    active_period = any(
+        bool(source.get(key))
+        for source in (summary, menstrual, day_log)
+        for key in active_period_keys
+    )
+    if active_period or phase == "menstrual":
         parts.append("active period")
 
     symptoms = next(
         (
-            menstrual.get(key)
+            source.get(key)
+            for source in (summary, menstrual, day_log)
             for key in ("symptoms", "symptomCategories", "loggedSymptoms")
-            if menstrual.get(key)
+            if source.get(key)
         ),
         None,
     )
@@ -770,8 +827,28 @@ def _extract_menstrual_cycle_context(womens_health_today: dict | None) -> str | 
         parts.append(f"symptoms: {normalized}")
 
     if not parts:
-        return "data available"
-    return "; ".join(parts)
+        return MenstrualCycleDetails(
+            context="data available",
+            cycle_day=_int_or_none(cycle_day),
+            phase=phase,
+            active_period=active_period,
+        )
+    return MenstrualCycleDetails(
+        context="; ".join(parts),
+        cycle_day=_int_or_none(cycle_day),
+        phase=phase,
+        active_period=active_period,
+    )
+
+
+def _should_deprioritize_hard_training_for_cycle(
+    menstrual_cycle: MenstrualCycleDetails,
+) -> bool:
+    if menstrual_cycle.active_period:
+        return True
+    if menstrual_cycle.phase == "menstrual":
+        return True
+    return menstrual_cycle.cycle_day is not None and menstrual_cycle.cycle_day <= 2
 
 
 def _normalize_garmin_phrase(value: str) -> str:
@@ -795,3 +872,19 @@ def _normalize_garmin_phrase(value: str) -> str:
         "overreaching": "overreaching",
     }
     return replacements.get(normalized, normalized)
+
+
+def _normalize_menstrual_phase(value: object) -> str | None:
+    phase_map = {
+        1: "menstrual",
+        2: "follicular",
+        3: "ovulatory",
+        4: "luteal",
+    }
+    numeric = _int_or_none(value)
+    if numeric is not None:
+        return phase_map.get(numeric, f"phase {numeric}")
+    if value is None:
+        return None
+    text = str(value).strip().replace("_", " ").lower()
+    return text or None
