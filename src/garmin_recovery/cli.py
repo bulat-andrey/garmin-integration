@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import re
 from datetime import date, timedelta
 from os import environ
 from pathlib import Path
@@ -21,14 +22,38 @@ from .telegram import TelegramNotificationError, send_telegram_message
 
 
 DEFAULT_PROFILE_DIR = Path.home() / ".config" / "garmin-recovery" / "profiles"
+WEEKDAY_ALIASES = {
+    "mon": 0,
+    "monday": 0,
+    "tue": 1,
+    "tues": 1,
+    "tuesday": 1,
+    "wed": 2,
+    "wednesday": 2,
+    "thu": 3,
+    "thur": 3,
+    "thurs": 3,
+    "thursday": 3,
+    "fri": 4,
+    "friday": 4,
+    "sat": 5,
+    "saturday": 5,
+    "sun": 6,
+    "sunday": 6,
+}
 
 
 def analyze_recovery_main() -> None:
     parser = argparse.ArgumentParser(description="Analyze today's recovery from Garmin + manual RPE.")
     parser.add_argument("--date", default=date.today().isoformat(), help="Target date in YYYY-MM-DD format.")
     parser.add_argument("--rpe-file", default=str(DEFAULT_RPE_PATH), help="Path to the manual RPE CSV.")
+    parser.add_argument(
+        "--profile",
+        default=None,
+        help="Optional profile name. Loads ~/.config/garmin-recovery/profiles/<name>.env before analyzing.",
+    )
     args = parser.parse_args()
-    asyncio.run(_run_analyze_recovery(args.date, Path(args.rpe_file)))
+    asyncio.run(_run_analyze_recovery(args.date, Path(args.rpe_file), args.profile))
 
 
 def analyze_week_main() -> None:
@@ -103,7 +128,9 @@ def send_telegram_recovery_main() -> None:
     )
 
 
-async def _run_analyze_recovery(target_date: str, rpe_file: Path) -> None:
+async def _run_analyze_recovery(target_date: str, rpe_file: Path, profile: str | None = None) -> None:
+    if profile:
+        _load_profile_environment(profile)
     result = await _collect_recovery_result(target_date, rpe_file)
     print("\n".join(_format_recovery_output(result)))
 
@@ -261,6 +288,7 @@ async def _collect_recovery_result(target_date: str, rpe_file: Path):
         activities=activities,
         rpe_entries=rpe_entries,
         womens_health_today=womens_health_today,
+        preferred_strength_days=_preferred_strength_days_from_env(),
     )
 
 
@@ -327,11 +355,11 @@ def _format_recovery_telegram_message_ru(
         lines.append("")
         lines.append("Почему:")
         for reason in result.reasons[:4]:
-            lines.append(f"- {_translate_reason_ru(reason)}")
+            lines.append(f"- {_postprocess_ru_text(_translate_reason_ru(reason))}")
     lines.append("")
     lines.append("Контекст:")
     for line in _select_context_lines_for_message(result.context_lines, limit=12):
-        lines.append(f"- {_translate_context_line_ru(line)}")
+        lines.append(f"- {_postprocess_ru_text(_translate_context_line_ru(line))}")
     lines.append("")
     lines.append("Это не медицинская рекомендация, а тренировочная эвристика.")
     return "\n".join(lines)
@@ -355,6 +383,30 @@ def _env_flag(name: str) -> bool:
     return value in {"1", "true", "yes", "on"}
 
 
+def _preferred_strength_days_from_env() -> set[int] | None:
+    raw_value = (environ.get("PREFERRED_STRENGTH_DAYS") or "").strip()
+    if not raw_value:
+        return None
+
+    normalized = raw_value.lower()
+    if normalized in {"any", "all", "*"}:
+        return None
+
+    days: set[int] = set()
+    for item in raw_value.split(","):
+        token = item.strip().lower()
+        if not token:
+            continue
+        weekday = WEEKDAY_ALIASES.get(token)
+        if weekday is None:
+            raise SystemExit(
+                "Invalid PREFERRED_STRENGTH_DAYS value. Use comma-separated weekdays like mon,thu,sat,sun or 'any'."
+            )
+        days.add(weekday)
+
+    return days or None
+
+
 def _select_context_lines_for_message(lines: list[str], limit: int) -> list[str]:
     priority_prefixes = (
         "Training focus: ",
@@ -370,20 +422,38 @@ def _select_context_lines_for_message(lines: list[str], limit: int) -> list[str]
         else:
             regular.append(line)
 
-    selected: list[str] = []
-    for line in regular:
-        if len(selected) >= limit:
-            break
-        selected.append(line)
+    selected_regular = regular[: max(limit - len(prioritized), 0)]
+    return selected_regular + prioritized[:limit]
 
-    for line in prioritized:
-        if line in selected:
-            continue
-        if len(selected) < limit:
-            selected.append(line)
-        else:
-            selected[-1] = line
-    return selected
+
+def _postprocess_ru_text(value: str) -> str:
+    translated = (
+        value.replace(
+            "Today is not a preferred strength day for this profile, so aerobic work is favored instead.",
+            "\u0421\u0435\u0433\u043e\u0434\u043d\u044f \u043d\u0435\u043f\u0440\u0435\u0434\u043f\u043e\u0447\u0442\u0438\u0442"
+            "\u0435\u043b\u044c\u043d\u044b\u0439 \u0434\u0435\u043d\u044c \u0434\u043b\u044f \u0441\u0438\u043b\u043e\u0432\u043e"
+            "\u0439 \u0443 \u044d\u0442\u043e\u0433\u043e \u043f\u0440\u043e\u0444\u0438\u043b\u044f, \u043f\u043e\u044d"
+            "\u0442\u043e\u043c\u0443 \u043b\u0443\u0447\u0448\u0435 \u0432\u044b\u0431\u0440\u0430\u0442\u044c \u0430\u044d"
+            "\u0440\u043e\u0431\u043d\u0443\u044e \u0440\u0430\u0431\u043e\u0442\u0443.",
+        )
+        .replace(
+            "Preferred strength days: ",
+            "\u041f\u0440\u0435\u0434\u043f\u043e\u0447\u0442\u0438\u0442\u0435\u043b\u044c\u043d\u044b\u0435 "
+            "\u0434\u043d\u0438 \u0434\u043b\u044f \u0441\u0438\u043b\u043e\u0432\u043e\u0439: ",
+        )
+        .replace("today is", "\u0441\u0435\u0433\u043e\u0434\u043d\u044f")
+    )
+    translated = re.sub(
+        r"from (\d+) prior nights",
+        lambda match: f"\u0438\u0437 {match.group(1)} \u043f\u0440\u0435\u0434\u044b\u0434\u0443\u0449\u0438\u0445 \u043d\u043e\u0447\u0435\u0439",
+        translated,
+    )
+    translated = re.sub(
+        r"\((\d+) prior nights\)",
+        lambda match: f"({match.group(1)} \u043f\u0440\u0435\u0434\u044b\u0434\u0443\u0449\u0438\u0445 \u043d\u043e\u0447\u0435\u0439)",
+        translated,
+    )
+    return translated
 
 
 def _translate_color_ru(value: str) -> str:

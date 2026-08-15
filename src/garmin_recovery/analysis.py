@@ -45,6 +45,9 @@ class RecentStrengthContext:
     latest_strength_date: str | None
 
 
+WEEKDAY_NAMES = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+
+
 def calculate_srpe(duration_min: int, rpe: float) -> int | float:
     value = duration_min * rpe
     rounded = round(value, 1)
@@ -250,15 +253,17 @@ def analyze_recovery(
     activities: list[GarminActivity],
     rpe_entries: dict[int, RpeEntry],
     womens_health_today: dict | None = None,
+    preferred_strength_days: set[int] | None = None,
 ) -> RecoveryResult:
     reference_now = datetime.combine(date.fromisoformat(target_date), datetime.max.time())
-    stats = health_today.get("stats", {})
-    sleep = sleep_today.get("sleep", {})
-    daily_sleep = sleep.get("dailySleepDTO", {})
-    sleep_scores = daily_sleep.get("sleepScores", {})
+    target_day = date.fromisoformat(target_date)
+    stats = _dict_or_empty(health_today.get("stats") if isinstance(health_today, dict) else {})
+    sleep = _dict_or_empty(sleep_today.get("sleep") if isinstance(sleep_today, dict) else {})
+    daily_sleep = _dict_or_empty(sleep.get("dailySleepDTO"))
+    sleep_scores = _dict_or_empty(daily_sleep.get("sleepScores"))
 
     sleep_hours = _hours(daily_sleep.get("sleepTimeSeconds"))
-    sleep_score = _number_or_none(sleep_scores.get("overall", {}).get("value"))
+    sleep_score = _number_or_none(_dict_or_empty(sleep_scores.get("overall")).get("value"))
     overnight_hrv = _number_or_none(sleep.get("avgOvernightHrv"))
     hrv_status = str(sleep.get("hrvStatus") or "")
     resting_hr = _number_or_none(sleep.get("restingHeartRate")) or _number_or_none(stats.get("restingHeartRate"))
@@ -270,27 +275,28 @@ def analyze_recovery(
     menstrual_cycle_context = _extract_menstrual_cycle_context(womens_health_today)
 
     prior_sleep_hours = [
-        _hours(item.get("sleep", {}).get("dailySleepDTO", {}).get("sleepTimeSeconds"))
+        _hours(_dict_or_empty(_dict_or_empty(item).get("sleep")).get("dailySleepDTO", {}).get("sleepTimeSeconds"))
         for item in sleep_range
-        if item.get("date", {}).get("date") != target_date
+        if _dict_or_empty(_dict_or_empty(item).get("date")).get("date") != target_date
     ]
     prior_sleep_hours = [value for value in prior_sleep_hours if value is not None]
 
     prior_hrv = [
-        _number_or_none(item.get("sleep", {}).get("avgOvernightHrv"))
+        _number_or_none(_dict_or_empty(_dict_or_empty(item).get("sleep")).get("avgOvernightHrv"))
         for item in sleep_range
-        if item.get("date", {}).get("date") != target_date
+        if _dict_or_empty(_dict_or_empty(item).get("date")).get("date") != target_date
     ]
     prior_hrv = [value for value in prior_hrv if value is not None]
 
     prior_rhr = [
-        _number_or_none(item.get("stats", {}).get("restingHeartRate"))
+        _number_or_none(_dict_or_empty(_dict_or_empty(item).get("stats")).get("restingHeartRate"))
         for item in health_range
-        if item.get("date", {}).get("date") != target_date
+        if _dict_or_empty(_dict_or_empty(item).get("date")).get("date") != target_date
     ]
     prior_rhr = [value for value in prior_rhr if value is not None]
 
     sleep_baseline = _safe_mean(prior_sleep_hours)
+    sleep_baseline_nights = len(prior_sleep_hours)
     hrv_baseline = _safe_mean(prior_hrv)
     rhr_baseline = _number_or_none(stats.get("lastSevenDaysAvgRestingHeartRate")) or _safe_mean(prior_rhr)
 
@@ -308,6 +314,9 @@ def analyze_recovery(
         >= reference_now - timedelta(hours=72)
     ]
     strength_context = recent_strength_context(activities, now=reference_now)
+    strength_day_preferred = (
+        preferred_strength_days is None or target_day.weekday() in preferred_strength_days
+    )
 
     score = 0
     reasons: list[str] = []
@@ -317,12 +326,12 @@ def analyze_recovery(
         if sleep_hours < 6.0 or ratio < 0.85:
             score += 2
             reasons.append(
-                f"Sleep was {sleep_hours:.1f} h versus a recent baseline of {sleep_baseline:.1f} h."
+                f"Sleep was {sleep_hours:.1f} h versus a recent baseline of {sleep_baseline:.1f} h from {sleep_baseline_nights} prior nights."
             )
         elif ratio < 0.95:
             score += 1
             reasons.append(
-                f"Sleep was slightly below baseline at {sleep_hours:.1f} h versus {sleep_baseline:.1f} h."
+                f"Sleep was slightly below baseline at {sleep_hours:.1f} h versus {sleep_baseline:.1f} h from {sleep_baseline_nights} prior nights."
             )
 
     if sleep_score is not None:
@@ -424,12 +433,25 @@ def analyze_recovery(
         elif ready_for_hard:
             recommendation = "E) hard training"
         elif not strength_context.had_strength_in_last_48h and (body_battery_wake or 0) >= 65:
-            recommendation = "D) strength training"
+            if strength_day_preferred:
+                recommendation = "D) strength training"
+            else:
+                recommendation = "C) normal aerobic training"
+                reasons.append(
+                    "Today is not a preferred strength day for this profile, so aerobic work is favored instead."
+                )
         else:
             recommendation = "C) normal aerobic training"
 
     context_lines = [
-        _format_context_line("Sleep", sleep_hours, sleep_baseline, "h", digits=1),
+        _format_context_line(
+            "Sleep",
+            sleep_hours,
+            sleep_baseline,
+            "h",
+            digits=1,
+            baseline_detail=f"{sleep_baseline_nights} prior nights" if sleep_baseline_nights else None,
+        ),
         _format_context_line("Sleep score", sleep_score, None, "/100", digits=0),
         _format_context_line("Overnight HRV", overnight_hrv, hrv_baseline, " ms", digits=0),
         _format_context_line("Resting HR", resting_hr, rhr_baseline, " bpm", digits=0),
@@ -445,6 +467,14 @@ def analyze_recovery(
     if strength_context.latest_strength_date:
         context_lines.append(
             f"Recent strength session: {strength_context.latest_strength_date}"
+        )
+    if preferred_strength_days is not None:
+        preferred_days_text = ", ".join(
+            WEEKDAY_NAMES[day] for day in sorted(preferred_strength_days)
+        )
+        context_lines.append(
+            "Preferred strength days: "
+            f"{preferred_days_text}; today is {WEEKDAY_NAMES[target_day.weekday()]}"
         )
     if recent_missing_hr_kite:
         context_lines.append(
@@ -583,12 +613,17 @@ def _safe_mean(values: list[float | None]) -> float | None:
     return mean(usable)
 
 
+def _dict_or_empty(value: object) -> dict:
+    return value if isinstance(value, dict) else {}
+
+
 def _format_context_line(
     label: str,
     today_value: float | None,
     baseline_value: float | None,
     suffix: str,
     digits: int = 1,
+    baseline_detail: str | None = None,
 ) -> str:
     if today_value is None:
         return ""
@@ -601,7 +636,8 @@ def _format_context_line(
 
     if baseline_text is None:
         return f"{label}: {today_text}{suffix}"
-    return f"{label}: {today_text}{suffix} vs baseline {baseline_text}{suffix}"
+    detail_suffix = f" ({baseline_detail})" if baseline_detail else ""
+    return f"{label}: {today_text}{suffix} vs baseline {baseline_text}{suffix}{detail_suffix}"
 
 
 def _format_pair(label: str, first: float | None, second: float | None, pair_label: str) -> str:
@@ -622,9 +658,13 @@ def _format_number(value: float) -> str:
     return str(int(rounded)) if rounded.is_integer() else f"{rounded:.1f}"
 
 
-def _extract_training_focus(training_status: dict) -> str | None:
-    load_balance = training_status.get("mostRecentTrainingLoadBalance", {})
-    metrics_map = load_balance.get("metricsTrainingLoadBalanceDTOMap", {})
+def _extract_training_focus(training_status: dict | None) -> str | None:
+    if not isinstance(training_status, dict):
+        return None
+    load_balance = training_status.get("mostRecentTrainingLoadBalance") or {}
+    if not isinstance(load_balance, dict):
+        return None
+    metrics_map = load_balance.get("metricsTrainingLoadBalanceDTOMap") or {}
     if not isinstance(metrics_map, dict) or not metrics_map:
         return None
 
@@ -647,9 +687,13 @@ def _extract_training_focus(training_status: dict) -> str | None:
     return _normalize_garmin_phrase(str(phrase))
 
 
-def _extract_training_status(training_status: dict) -> str | None:
-    recent_status = training_status.get("mostRecentTrainingStatus", {})
-    latest_data = recent_status.get("latestTrainingStatusData", {})
+def _extract_training_status(training_status: dict | None) -> str | None:
+    if not isinstance(training_status, dict):
+        return None
+    recent_status = training_status.get("mostRecentTrainingStatus") or {}
+    if not isinstance(recent_status, dict):
+        return None
+    latest_data = recent_status.get("latestTrainingStatusData") or {}
     if not isinstance(latest_data, dict) or not latest_data:
         return None
 

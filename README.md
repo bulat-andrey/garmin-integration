@@ -151,6 +151,7 @@ Optional:
 ATHLETE_NAME
 MESSAGE_LANGUAGE
 ENABLE_WOMENS_HEALTH
+PREFERRED_STRENGTH_DAYS
 ```
 
 Example:
@@ -160,6 +161,7 @@ $env:TELEGRAM_BOT_TOKEN="123456:abc"
 $env:TELEGRAM_CHAT_ID="123456789"
 $env:ATHLETE_NAME="Andrei"
 $env:MESSAGE_LANGUAGE="ru"
+$env:PREFERRED_STRENGTH_DAYS="any"
 uv run send-telegram-recovery --dry-run
 uv run send-telegram-recovery
 ```
@@ -168,10 +170,12 @@ The command reuses the same recovery heuristic as `analyze-recovery`, but format
 If `ATHLETE_NAME` is set, the title becomes `Garmin recovery for <name>`.
 If `MESSAGE_LANGUAGE=ru`, the Telegram text is sent in Russian.
 If `ENABLE_WOMENS_HEALTH=true`, the command also queries Garmin women's health data and includes menstrual-cycle context when Garmin returns it.
+If `PREFERRED_STRENGTH_DAYS` is set, strength is recommended only on those weekdays. Use values like `mon,thu,sat,sun` or `any`.
 
 You can also use named profiles:
 
 ```powershell
+uv run analyze-recovery --profile andrei
 uv run send-telegram-recovery --profile andrei
 uv run send-telegram-recovery --profile vika --dry-run
 ```
@@ -234,6 +238,7 @@ For Vika, set:
 ATHLETE_NAME=Vika
 MESSAGE_LANGUAGE=ru
 ENABLE_WOMENS_HEALTH=true
+PREFERRED_STRENGTH_DAYS=mon,thu,sat,sun
 ```
 
 ## Daily 08:10 notification

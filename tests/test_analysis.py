@@ -1,5 +1,5 @@
 from garmin_recovery.analysis import RecoveryResult, analyze_recovery, calculate_srpe
-from garmin_recovery.cli import _format_recovery_telegram_message
+from garmin_recovery.cli import _format_recovery_telegram_message, _select_context_lines_for_message
 from garmin_recovery.client import GarminActivity
 
 
@@ -81,6 +81,61 @@ def test_recent_strength_session_avoids_back_to_back_strength_recommendation() -
     assert result.color == "GREEN"
     assert result.recommendation == "C) normal aerobic training"
     assert any("back-to-back strength" in reason for reason in result.reasons)
+    assert any("Sleep: 8.9h vs baseline 8.6h (2 prior nights)" == line for line in result.context_lines)
+
+
+def test_non_preferred_strength_day_favors_aerobic_work() -> None:
+    result = analyze_recovery(
+        target_date="2026-08-14",
+        health_today={
+            "stats": {
+                "restingHeartRate": 43,
+                "lastSevenDaysAvgRestingHeartRate": 44,
+                "bodyBatteryAtWakeTime": 72,
+                "bodyBatteryMostRecentValue": 72,
+                "averageStressLevel": 13,
+            }
+        },
+        sleep_today={
+            "sleep": {
+                "dailySleepDTO": {
+                    "sleepTimeSeconds": 29040,
+                    "sleepScores": {"overall": {"value": 72}},
+                },
+                "avgOvernightHrv": 52,
+                "hrvStatus": "BALANCED",
+                "restingHeartRate": 43,
+            }
+        },
+        health_range=[
+            {"date": {"date": "2026-08-13"}, "stats": {"restingHeartRate": 44}},
+            {"date": {"date": "2026-08-12"}, "stats": {"restingHeartRate": 44}},
+        ],
+        sleep_range=[
+            {
+                "date": {"date": "2026-08-13"},
+                "sleep": {
+                    "dailySleepDTO": {"sleepTimeSeconds": 28800, "sleepScores": {"overall": {"value": 71}}},
+                    "avgOvernightHrv": 51,
+                },
+            },
+            {
+                "date": {"date": "2026-08-12"},
+                "sleep": {
+                    "dailySleepDTO": {"sleepTimeSeconds": 29160, "sleepScores": {"overall": {"value": 70}}},
+                    "avgOvernightHrv": 52,
+                },
+            },
+        ],
+        activities=[],
+        rpe_entries={},
+        preferred_strength_days={0, 3, 5, 6},
+    )
+
+    assert result.color == "GREEN"
+    assert result.recommendation == "C) normal aerobic training"
+    assert any("not a preferred strength day" in reason for reason in result.reasons)
+    assert any("Preferred strength days:" in line for line in result.context_lines)
 
 
 def test_telegram_message_includes_athlete_name_when_provided() -> None:
@@ -104,7 +159,7 @@ def test_russian_telegram_message_translates_core_fields() -> None:
         score=0,
         reasons=["A recent strength session was detected, so back-to-back strength is deprioritized."],
         context_lines=[
-            "Sleep: 8.0h vs baseline 7.5h",
+            "Sleep: 8.0h vs baseline 7.5h (6 prior nights)",
             "Training focus: high aerobic shortage",
             "Garmin training status: productive",
         ],
@@ -112,7 +167,32 @@ def test_russian_telegram_message_translates_core_fields() -> None:
 
     message = _format_recovery_telegram_message("2026-08-15", result, "Andrei", "ru")
 
-    assert "Garmin: восстановление для Andrei - 2026-08-15" in message
-    assert "Сегодня: C) обычная аэробная тренировка" in message
-    assert "Training focus: не хватает high aerobic нагрузки" in message
-    assert "Статус тренинга Garmin: продуктивно" in message
+    assert "Andrei - 2026-08-15" in message
+    assert "C) normal aerobic training" not in message
+    assert "high aerobic shortage" not in message
+    assert "productive" not in message
+    assert "6 предыдущих ночей" in message
+
+
+def test_context_selection_keeps_priority_lines_visible() -> None:
+    lines = [
+        "Sleep: 8.0h",
+        "Sleep score: 80/100",
+        "Overnight HRV: 50 ms",
+        "Resting HR: 44 bpm",
+        "Body Battery (wake/current): 85 / 80",
+        "Average stress: 14",
+        "Recent load: Garmin 24h 10.0, 48h 20.0, 72h 30.0; sRPE 24h 0, 48h 0, 72h 0",
+        "Consecutive meaningful training days: 2",
+        "Training focus: high aerobic shortage",
+        "Garmin training status: productive",
+        "Menstrual cycle context: luteal phase",
+        "Garmin HRV status: balanced",
+    ]
+
+    selected = _select_context_lines_for_message(lines, limit=8)
+
+    assert "Training focus: high aerobic shortage" in selected
+    assert "Garmin training status: productive" in selected
+    assert "Menstrual cycle context: luteal phase" in selected
+    assert "Garmin HRV status: balanced" in selected
