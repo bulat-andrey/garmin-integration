@@ -651,7 +651,32 @@ def _format_context_line(
     if baseline_text is None:
         return f"{label}: {today_text}{suffix}"
     detail_suffix = f" ({baseline_detail})" if baseline_detail else ""
-    return f"{label}: {today_text}{suffix} vs baseline {baseline_text}{suffix}{detail_suffix}"
+    baseline_note = _baseline_context_note(label, today_value, baseline_value)
+    note_suffix = f' "{baseline_note}"' if baseline_note else ""
+    return f"{label}: {today_text}{suffix} vs baseline {baseline_text}{suffix}{detail_suffix}{note_suffix}"
+
+
+def _baseline_context_note(label: str, today_value: float, baseline_value: float) -> str | None:
+    if baseline_value == 0:
+        return None
+
+    if label in {"Sleep", "Overnight HRV"}:
+        ratio = today_value / baseline_value
+        if ratio >= 1.03:
+            return "above baseline, generally positive"
+        if ratio <= 0.97:
+            return "below baseline, a bit worse than usual"
+        return "around baseline"
+
+    if label == "Resting HR":
+        delta = today_value - baseline_value
+        if delta <= -2:
+            return "below baseline, generally positive"
+        if delta >= 2:
+            return "above baseline, a bit worse than usual"
+        return "around baseline"
+
+    return None
 
 
 def _format_pair(label: str, first: float | None, second: float | None, pair_label: str) -> str:

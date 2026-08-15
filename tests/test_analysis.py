@@ -81,7 +81,10 @@ def test_recent_strength_session_avoids_back_to_back_strength_recommendation() -
     assert result.color == "GREEN"
     assert result.recommendation == "C) normal aerobic training"
     assert any("back-to-back strength" in reason for reason in result.reasons)
-    assert any("Sleep: 8.9h vs baseline 8.6h (2 prior nights)" == line for line in result.context_lines)
+    assert any(
+        line.startswith('Sleep: 8.9h vs baseline 8.6h (2 prior nights) "above baseline, generally positive"')
+        for line in result.context_lines
+    )
 
 
 def test_non_preferred_strength_day_favors_aerobic_work() -> None:
@@ -159,7 +162,7 @@ def test_russian_telegram_message_translates_core_fields() -> None:
         score=0,
         reasons=["A recent strength session was detected, so back-to-back strength is deprioritized."],
         context_lines=[
-            "Sleep: 8.0h vs baseline 7.5h (6 prior nights)",
+            'Sleep: 8.0h vs baseline 7.5h (6 prior nights) "above baseline, generally positive"',
             "Training focus: high aerobic shortage",
             "Garmin training status: productive",
         ],
@@ -172,6 +175,52 @@ def test_russian_telegram_message_translates_core_fields() -> None:
     assert "high aerobic shortage" not in message
     assert "productive" not in message
     assert "6 предыдущих ночей" in message
+    assert '"выше базы, это хорошо"' in message
+
+
+def test_context_lines_add_short_baseline_interpretation() -> None:
+    result = analyze_recovery(
+        target_date="2026-08-15",
+        health_today={
+            "stats": {
+                "restingHeartRate": 49,
+                "lastSevenDaysAvgRestingHeartRate": 53,
+                "bodyBatteryAtWakeTime": 90,
+                "bodyBatteryMostRecentValue": 70,
+                "averageStressLevel": 16,
+            }
+        },
+        sleep_today={
+            "sleep": {
+                "dailySleepDTO": {
+                    "sleepTimeSeconds": 30960,
+                    "sleepScores": {"overall": {"value": 88}},
+                },
+                "avgOvernightHrv": 58,
+                "restingHeartRate": 49,
+            }
+        },
+        health_range=[
+            {"date": {"date": "2026-08-14"}, "stats": {"restingHeartRate": 53}},
+            {"date": {"date": "2026-08-13"}, "stats": {"restingHeartRate": 53}},
+        ],
+        sleep_range=[
+            {
+                "date": {"date": "2026-08-14"},
+                "sleep": {"dailySleepDTO": {"sleepTimeSeconds": 27360}, "avgOvernightHrv": 53},
+            },
+            {
+                "date": {"date": "2026-08-13"},
+                "sleep": {"dailySleepDTO": {"sleepTimeSeconds": 27360}, "avgOvernightHrv": 53},
+            },
+        ],
+        activities=[],
+        rpe_entries={},
+    )
+
+    assert 'Sleep: 8.6h vs baseline 7.6h (2 prior nights) "above baseline, generally positive"' in result.context_lines
+    assert 'Overnight HRV: 58 ms vs baseline 53 ms "above baseline, generally positive"' in result.context_lines
+    assert 'Resting HR: 49 bpm vs baseline 53 bpm "below baseline, generally positive"' in result.context_lines
 
 
 def test_context_selection_keeps_priority_lines_visible() -> None:

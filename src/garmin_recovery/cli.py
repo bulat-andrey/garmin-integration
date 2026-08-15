@@ -545,6 +545,11 @@ def _translate_context_line_ru(value: str) -> str:
             return (
                 translated.replace("vs baseline", "vs база")
                 .replace("wake/current", "утро/сейчас")
+                .replace('"above baseline, generally positive"', '"выше базы, это хорошо"')
+                .replace('"below baseline, generally positive"', '"ниже базы, это хорошо"')
+                .replace('"below baseline, a bit worse than usual"', '"ниже базы, это хуже обычного"')
+                .replace('"above baseline, a bit worse than usual"', '"выше базы, это хуже обычного"')
+                .replace('"around baseline"', '"примерно как обычно"')
             )
     return value
 
