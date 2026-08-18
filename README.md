@@ -4,7 +4,7 @@ Small local training and recovery workflow that reads Garmin Connect data throug
 
 ## What this project does
 
-- Uses the existing `garmin` MCP entry from `C:\Users\bulat\.codex\config.toml`
+- Uses the existing `garmin` MCP entry from `C:\Users\<user>\.codex\config.toml`
 - Reads Garmin recovery data locally through the Garmin MCP server
 - Uses Garmin activity `Evaluation / Perceived Effort` as the primary RPE source
 - Keeps an optional local CSV backup/override at `data/manual_rpe.csv`
@@ -17,14 +17,14 @@ Small local training and recovery workflow that reads Garmin Connect data throug
 
 ## Current local setup
 
-- Codex MCP config is preserved in `C:\Users\bulat\.codex\config.toml`
+- Codex MCP config is preserved in `C:\Users\<user>\.codex\config.toml`
 - Garmin MCP server is configured there as `garmin`
 - The upstream Garmin MCP checkout currently lives in:
-  `C:\Users\bulat\Projects\Garmin_integration_Andrei\garmin-connect-mcp`
+  `C:\Users\bulat\Projects\Garmin_integration_<user>\garmin-connect-mcp`
 - Garmin credentials and tokens stay outside this repo:
-  - `C:\Users\bulat\.garminconnect.env`
-  - `C:\Users\bulat\.garminconnect`
-  - `C:\Users\bulat\.garminconnect_base64`
+  - `C:\Users\<user>\.garminconnect.env`
+  - `C:\Users\<user>\.garminconnect`
+  - `C:\Users\<user>\.garminconnect_base64`
 
 ## Security notes
 
@@ -35,7 +35,7 @@ Small local training and recovery workflow that reads Garmin Connect data throug
 
 ## Install
 
-From `C:\Users\bulat\Projects\Garmin_integration_Andrei`:
+From `C:\Users\<user>\Projects\Garmin_integration_<user>`:
 
 ```powershell
 uv sync
@@ -65,7 +65,7 @@ Garmin authentication is handled by the upstream Garmin MCP server.
 Current command:
 
 ```powershell
-uv run --directory C:\Users\bulat\Projects\Garmin_integration_Andrei\garmin-connect-mcp garmin-connect-mcp auth
+uv run --directory C:\Users\<user>\Projects\Garmin_integration_<user>\garmin-connect-mcp garmin-connect-mcp auth
 ```
 
 If Garmin expires the session, re-run the auth command. If Garmin asks for MFA or an interactive login step, complete it locally in the terminal.
@@ -198,7 +198,7 @@ uv run send-telegram-recovery --profile andrei
 uv run send-telegram-recovery --profile vika --dry-run
 ```
 
-## Hetzner deployment
+## VM deployment
 
 One simple approach for a Linux desktop or dev box is:
 
@@ -218,7 +218,7 @@ uv run analyze-recovery
 uv run send-telegram-recovery --dry-run
 ```
 
-If you do not want to install the full Codex desktop app on Hetzner, this project still works as long as the local Garmin MCP server exists and `~/.codex/config.toml` contains the `garmin` MCP entry that points to it.
+If you do not want to install the full  desktop app on VM, this project still works as long as the local Garmin MCP server exists and `~/.codex/config.toml` contains the `garmin` MCP entry that points to it.
 
 You can override the Codex config path with:
 
@@ -367,7 +367,7 @@ OnCalendar=
 OnCalendar=*-*-* 08:00:00 Europe/Warsaw
 ```
 
-If the Hetzner desktop may stay logged out, also enable lingering for the user so the timer can run without an active session:
+If the Linux VM desktop may stay logged out, also enable lingering for the user so the timer can run without an active session:
 
 ```bash
 sudo loginctl enable-linger $USER
