@@ -1,12 +1,13 @@
 # Garmin Recovery Local
 
-Small local training and recovery workflow for Codex that reads Garmin Connect data through a local MCP server and combines it with manual RPE.
+Small local training and recovery workflow for Codex that reads Garmin Connect data through a local MCP server and combines it with Garmin activity RPE plus an optional CSV backup.
 
 ## What this project does
 
 - Uses the existing `garmin` MCP entry from `C:\Users\bulat\.codex\config.toml`
 - Reads Garmin recovery data locally through the Garmin MCP server
-- Keeps manual RPE in a simple local CSV: `data/manual_rpe.csv`
+- Uses Garmin activity `Evaluation / Perceived Effort` as the primary RPE source
+- Keeps an optional local CSV backup/override at `data/manual_rpe.csv`
 - Produces simple command-line reports:
   - `analyze-recovery`
   - `analyze-week`
@@ -89,19 +90,36 @@ It also returns a simple training suggestion:
 
 This is a coaching heuristic, not a medical decision tool.
 
+## RPE Sources
+
+RPE is now resolved in this order:
+
+1. Garmin activity `Evaluation / Perceived Effort`
+2. `data/manual_rpe.csv` as a local backup or explicit override
+
+Garmin stores perceived effort in the activity as `directWorkoutRpe` on an internal `0-100` scale. This project converts it back to the normal `1-10` RPE scale automatically.
+
+Use the CSV only when:
+
+- you want to backfill an older activity
+- Garmin did not save or expose the activity RPE
+- you want to override the Garmin value locally
+
 ### `analyze-week`
 
 Summarizes the last 7 days:
 
 - recent activities
 - Garmin load fields that are available
-- manual sRPE load
+- session RPE / sRPE load
 - missing-HR kite sessions
 - sleep / HRV / resting-HR trend
 
 ### `add-rpe <activity> <rpe>`
 
 Adds or updates a row in `data/manual_rpe.csv`.
+
+This is now a backup/override workflow, not the primary one. For normal day-to-day use, prefer entering `Evaluation / Perceived Effort` directly in the Garmin app.
 
 Supported activity selectors:
 
@@ -130,7 +148,7 @@ Shows recent kite sessions together with:
 - Garmin load
 - intensity minutes
 - HR availability
-- manual RPE / sRPE
+- RPE / sRPE, with the source shown when available
 
 This makes it easier to see when Garmin underestimates load because HR was missing.
 
