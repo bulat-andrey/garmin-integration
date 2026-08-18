@@ -1,0 +1,15 @@
+[Unit]
+Description=Telegram command listener for on-demand Garmin recovery reports
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/garmin-integration
+EnvironmentFile=%h/.config/garmin-recovery/telegram-listener.env
+ExecStart=%h/.local/bin/uv run --directory %h/garmin-integration telegram-command-listener
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target

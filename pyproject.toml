@@ -14,6 +14,7 @@ analyze-week = "garmin_recovery.cli:analyze_week_main"
 add-rpe = "garmin_recovery.cli:add_rpe_main"
 analyze-kite-history = "garmin_recovery.cli:analyze_kite_history_main"
 send-telegram-recovery = "garmin_recovery.cli:send_telegram_recovery_main"
+telegram-command-listener = "garmin_recovery.telegram_listener:telegram_command_listener_main"
 
 [build-system]
 requires = ["hatchling"]

@@ -241,6 +241,53 @@ ENABLE_WOMENS_HEALTH=true
 PREFERRED_STRENGTH_DAYS=mon,thu,sat,sun
 ```
 
+## Telegram commands
+
+You can also run on-demand recovery reports from Telegram by sending commands to the bot:
+
+```text
+/andrei
+/vika
+```
+
+Recommended setup:
+
+- use a direct chat with the bot
+- allow only your trusted Telegram user ID and chat ID
+- keep the listener local on the Hetzner VM
+
+Install the listener env:
+
+```bash
+cp deploy/telegram-listener.env.example ~/.config/garmin-recovery/telegram-listener.env
+chmod 600 ~/.config/garmin-recovery/telegram-listener.env
+```
+
+Example:
+
+```text
+TELEGRAM_BOT_TOKEN=123456:abc
+TELEGRAM_COMMAND_ALLOWED_USER_IDS=123456789
+TELEGRAM_COMMAND_ALLOWED_CHAT_IDS=123456789
+TELEGRAM_COMMAND_SKIP_EXISTING_UPDATES=true
+```
+
+Install and start the listener service:
+
+```bash
+mkdir -p ~/.config/systemd/user
+cp deploy/garmin-recovery-telegram-listener.service ~/.config/systemd/user/
+systemctl --user daemon-reload
+systemctl --user enable --now garmin-recovery-telegram-listener.service
+systemctl --user status garmin-recovery-telegram-listener.service
+```
+
+To follow logs:
+
+```bash
+journalctl --user -u garmin-recovery-telegram-listener.service -f
+```
+
 ## Daily 08:10 notification
 
 This repo includes `systemd --user` templates in `deploy/`.
