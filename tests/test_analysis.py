@@ -347,3 +347,76 @@ def test_menstrual_day_summary_is_rendered_and_deprioritizes_hard_training() -> 
         line == "Menstrual cycle context: cycle day 2; phase menstrual; cycle type irregular; active period"
         for line in result.context_lines
     )
+
+
+def test_missing_today_recovery_data_adds_explanatory_reason() -> None:
+    result = analyze_recovery(
+        target_date="2026-08-18",
+        health_today={
+            "stats": {
+                "includesWellnessData": False,
+                "restingHeartRate": None,
+                "lastSevenDaysAvgRestingHeartRate": None,
+                "bodyBatteryAtWakeTime": None,
+                "bodyBatteryMostRecentValue": None,
+                "averageStressLevel": None,
+            },
+            "training_status": {},
+        },
+        sleep_today={
+            "sleep": {
+                "dailySleepDTO": {
+                    "sleepTimeSeconds": None,
+                }
+            }
+        },
+        health_range=[
+            {"date": {"date": "2026-08-17"}, "stats": {"restingHeartRate": 52}},
+            {"date": {"date": "2026-08-16"}, "stats": {"restingHeartRate": 53}},
+        ],
+        sleep_range=[
+            {
+                "date": {"date": "2026-08-17"},
+                "sleep": {"dailySleepDTO": {"sleepTimeSeconds": 29580}, "avgOvernightHrv": 54},
+            },
+            {
+                "date": {"date": "2026-08-16"},
+                "sleep": {"dailySleepDTO": {"sleepTimeSeconds": 28800}, "avgOvernightHrv": 53},
+            },
+        ],
+        activities=[],
+        rpe_entries={},
+        womens_health_today={
+            "data": {
+                "menstrual_data": {
+                    "daySummary": {
+                        "dayInCycle": 5,
+                        "currentPhase": 2,
+                        "cycleType": "IRREGULAR",
+                    }
+                }
+            }
+        },
+        preferred_strength_days={0, 3, 5, 6},
+    )
+
+    assert any(
+        "Today's Garmin recovery data is not yet available or synced" in reason
+        for reason in result.reasons
+    )
+
+
+def test_russian_telegram_message_explains_missing_garmin_recovery_data() -> None:
+    result = RecoveryResult(
+        color="GREEN",
+        recommendation="C) normal aerobic training",
+        score=0,
+        reasons=[
+            "Today's Garmin recovery data is not yet available or synced, so the recommendation leans more on recent load and profile context."
+        ],
+        context_lines=["Recent load: Garmin 24h 0.0, 48h 0.0, 72h 15.8; sRPE 24h 0, 48h 0, 72h 0"],
+    )
+
+    message = _format_recovery_telegram_message("2026-08-18", result, "Vika", "ru")
+
+    assert "Сегодняшние recovery-данные Garmin пока недоступны" in message

@@ -515,6 +515,12 @@ def _translate_reason_ru(value: str) -> str:
         return "В последних кайт-сессиях нет HR, поэтому Garmin, вероятно, занижает нагрузку."
     if value.startswith("A recent strength session was detected"):
         return "Недавно была силовая тренировка, поэтому подряд еще одну силовую сегодня лучше не ставить."
+    if value.startswith("Today's Garmin recovery data is not yet available or synced"):
+        return (
+            "Сегодняшние recovery-данные Garmin пока недоступны или еще не "
+            "синхронизированы, поэтому рекомендация больше опирается "
+            "на недавнюю нагрузку и контекст профиля."
+        )
     return value
 
 

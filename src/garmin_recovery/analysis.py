@@ -282,6 +282,16 @@ def analyze_recovery(
     training_status = _extract_training_status(health_today.get("training_status", {}))
     menstrual_cycle = _extract_menstrual_cycle_details(womens_health_today)
     menstrual_cycle_context = menstrual_cycle.context
+    missing_today_recovery_data = _is_missing_today_recovery_data(
+        stats,
+        sleep_hours,
+        sleep_score,
+        overnight_hrv,
+        resting_hr,
+        body_battery_wake,
+        body_battery_current,
+        average_stress,
+    )
 
     prior_sleep_hours = [
         _hours(_dict_or_empty(_dict_or_empty(item).get("sleep")).get("dailySleepDTO", {}).get("sleepTimeSeconds"))
@@ -418,6 +428,10 @@ def analyze_recovery(
         score += 1
         reasons.append(
             "Recent kite sessions are missing HR and have no manual RPE yet, so Garmin load is likely underestimated."
+        )
+    if missing_today_recovery_data:
+        reasons.append(
+            "Today's Garmin recovery data is not yet available or synced, so the recommendation leans more on recent load and profile context."
         )
 
     if score >= 6:
@@ -625,6 +639,33 @@ def _safe_mean(values: list[float | None]) -> float | None:
     if not usable:
         return None
     return mean(usable)
+
+
+def _is_missing_today_recovery_data(
+    stats: dict,
+    sleep_hours: float | None,
+    sleep_score: float | None,
+    overnight_hrv: float | None,
+    resting_hr: float | None,
+    body_battery_wake: float | None,
+    body_battery_current: float | None,
+    average_stress: float | None,
+) -> bool:
+    if any(
+        value is not None
+        for value in (
+            sleep_hours,
+            sleep_score,
+            overnight_hrv,
+            resting_hr,
+            body_battery_wake,
+            body_battery_current,
+            average_stress,
+        )
+    ):
+        return False
+
+    return stats.get("includesWellnessData") is False
 
 
 def _dict_or_empty(value: object) -> dict:
