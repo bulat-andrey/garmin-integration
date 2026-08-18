@@ -504,6 +504,8 @@ def analyze_recovery(
             "Preferred strength days: "
             f"{preferred_days_text}; today is {WEEKDAY_NAMES[target_day.weekday()]}"
         )
+    if missing_today_recovery_data:
+        context_lines.append("Garmin sync status: today's recovery data is not yet available")
     if recent_missing_hr_kite:
         context_lines.append(
             f"Recent kite sessions without HR: {len(recent_missing_hr_kite)}; sRPE was used as the more trusted load signal."

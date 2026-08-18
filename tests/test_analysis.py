@@ -404,6 +404,7 @@ def test_missing_today_recovery_data_adds_explanatory_reason() -> None:
         "Today's Garmin recovery data is not yet available or synced" in reason
         for reason in result.reasons
     )
+    assert "Garmin sync status: today's recovery data is not yet available" in result.context_lines
 
 
 def test_russian_telegram_message_explains_missing_garmin_recovery_data() -> None:
