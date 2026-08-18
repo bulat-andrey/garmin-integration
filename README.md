@@ -1,6 +1,6 @@
 # Garmin Recovery Local
 
-Small local training and recovery workflow for Codex that reads Garmin Connect data through a local MCP server and combines it with Garmin activity RPE plus an optional CSV backup.
+Small local training and recovery workflow that reads Garmin Connect data through a local MCP server and combines it with Garmin activity RPE plus an optional CSV backup.
 
 ## What this project does
 
