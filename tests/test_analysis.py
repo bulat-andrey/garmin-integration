@@ -1,4 +1,13 @@
-from garmin_recovery.analysis import RecoveryResult, analyze_recovery, calculate_srpe
+from datetime import datetime
+
+from garmin_recovery.analysis import (
+    RecoveryResult,
+    RpeEntry,
+    analyze_recovery,
+    calculate_srpe,
+    kite_history_lines,
+    summarize_loads,
+)
 from garmin_recovery.cli import _format_recovery_telegram_message, _select_context_lines_for_message
 from garmin_recovery.client import GarminActivity
 
@@ -10,6 +19,72 @@ def test_calculate_srpe_matches_user_examples() -> None:
 
 def test_calculate_srpe_keeps_decimal_when_needed() -> None:
     assert calculate_srpe(45, 6.5) == 292.5
+
+
+def test_garmin_app_rpe_is_used_when_csv_is_missing() -> None:
+    activity = GarminActivity(
+        activity_id=24000211128,
+        name="Choczewo Kiteboarding",
+        activity_type="kiteboarding_v2",
+        date="2026-08-16",
+        start_local="2026-08-16 10:00:00",
+        duration_min=196,
+        moving_min=180,
+        distance_km=52.0,
+        calories=1200.0,
+        description="",
+        average_hr=98.0,
+        garmin_load=8.2,
+        garmin_rpe=7.0,
+        moderate_intensity_minutes=21,
+        vigorous_intensity_minutes=20,
+        has_hr_data=True,
+    )
+
+    loads = summarize_loads([activity], {}, now=datetime(2026, 8, 16, 23, 0, 0))
+    lines = kite_history_lines([activity], {})
+
+    assert loads["srpe_24h"] == 1372.0
+    assert loads["srpe_48h"] == 1372.0
+    assert loads["srpe_72h"] == 1372.0
+    assert any("RPE 7 (Garmin)" in line for line in lines)
+
+
+def test_csv_rpe_overrides_garmin_app_rpe() -> None:
+    activity = GarminActivity(
+        activity_id=24024100396,
+        name="Kosakowo Kiteboarding",
+        activity_type="kiteboarding_v2",
+        date="2026-08-18",
+        start_local="2026-08-18 09:00:00",
+        duration_min=83,
+        moving_min=80,
+        distance_km=22.1,
+        calories=600.0,
+        description="",
+        average_hr=104.0,
+        garmin_load=14.7,
+        garmin_rpe=3.0,
+        moderate_intensity_minutes=25,
+        vigorous_intensity_minutes=20,
+        has_hr_data=True,
+    )
+    csv_entry = RpeEntry(
+        date="2026-08-18",
+        activity_id=24024100396,
+        activity_type="kiteboarding_v2",
+        duration_min=83,
+        rpe=6.0,
+        srpe=498.0,
+        notes="override",
+    )
+
+    loads = summarize_loads([activity], {activity.activity_id: csv_entry}, now=datetime(2026, 8, 18, 23, 0, 0))
+    lines = kite_history_lines([activity], {activity.activity_id: csv_entry})
+
+    assert loads["srpe_24h"] == 498.0
+    assert any("RPE 6 (CSV override)" in line for line in lines)
+    assert any("sRPE 498" in line for line in lines)
 
 
 def test_recent_strength_session_avoids_back_to_back_strength_recommendation() -> None:

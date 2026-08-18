@@ -505,10 +505,10 @@ def _translate_reason_ru(value: str) -> str:
         return value.replace("Average stress was high at", "Средний стресс высокий:")
     if value.startswith("Average stress was somewhat elevated at "):
         return value.replace("Average stress was somewhat elevated at", "Средний стресс немного повышен:")
-    if value.startswith("Manual sRPE load is high: "):
-        return value.replace("Manual sRPE load is high:", "Ручная нагрузка sRPE высокая:")
-    if value.startswith("Manual sRPE load is building: "):
-        return value.replace("Manual sRPE load is building:", "Ручная нагрузка sRPE накапливается:")
+    if value.startswith("Session RPE load is high: "):
+        return value.replace("Session RPE load is high:", "Нагрузка по session RPE высокая:")
+    if value.startswith("Session RPE load is building: "):
+        return value.replace("Session RPE load is building:", "Нагрузка по session RPE накапливается:")
     if value.startswith("You are on a "):
         return value.replace("You are on a", "Сейчас серия из").replace("-day meaningful training streak.", " дней значимых тренировок подряд.")
     if value.startswith("Recent kite sessions are missing HR"):

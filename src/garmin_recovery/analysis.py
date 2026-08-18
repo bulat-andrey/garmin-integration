@@ -177,7 +177,7 @@ def summarize_loads(
         start_time = parse_garmin_datetime(activity.start_local)
         if start_time is None:
             continue
-        srpe = rpe_entries.get(activity.activity_id).srpe if activity.activity_id in rpe_entries else 0.0
+        srpe = _resolved_srpe(activity, rpe_entries.get(activity.activity_id)) or 0.0
         garmin_load = activity.garmin_load or 0.0
         for label, cutoff in windows.items():
             if start_time >= cutoff:
@@ -209,7 +209,8 @@ def consecutive_training_days(
 
 
 def is_meaningful_training_session(activity: GarminActivity, rpe_entry: RpeEntry | None) -> bool:
-    if rpe_entry is not None and rpe_entry.srpe > 0:
+    resolved_srpe = _resolved_srpe(activity, rpe_entry)
+    if resolved_srpe is not None and resolved_srpe > 0:
         return True
     if (activity.garmin_load or 0.0) >= 10:
         return True
@@ -409,12 +410,12 @@ def analyze_recovery(
     if srpe_24h >= 800 or srpe_48h >= 1400 or srpe_72h >= 1800:
         score += 2
         reasons.append(
-            f"Manual sRPE load is high: 24h {srpe_24h:.0f}, 48h {srpe_48h:.0f}, 72h {srpe_72h:.0f}."
+            f"Session RPE load is high: 24h {srpe_24h:.0f}, 48h {srpe_48h:.0f}, 72h {srpe_72h:.0f}."
         )
     elif srpe_24h >= 500 or srpe_48h >= 900 or srpe_72h >= 1200:
         score += 1
         reasons.append(
-            f"Manual sRPE load is building: 24h {srpe_24h:.0f}, 48h {srpe_48h:.0f}, 72h {srpe_72h:.0f}."
+            f"Session RPE load is building: 24h {srpe_24h:.0f}, 48h {srpe_48h:.0f}, 72h {srpe_72h:.0f}."
         )
 
     if streak >= 4:
@@ -427,7 +428,7 @@ def analyze_recovery(
     if recent_missing_hr_kite and srpe_72h <= 0:
         score += 1
         reasons.append(
-            "Recent kite sessions are missing HR and have no manual RPE yet, so Garmin load is likely underestimated."
+            "Recent kite sessions are missing HR and have no session RPE logged yet, so Garmin load is likely underestimated."
         )
     if missing_today_recovery_data:
         reasons.append(
@@ -542,7 +543,7 @@ def weekly_summary_lines(
     total_duration = sum(activity.duration_min for activity in activities)
     total_distance = sum(activity.distance_km or 0.0 for activity in activities)
     total_garmin_load = sum(activity.garmin_load or 0.0 for activity in activities)
-    total_srpe = sum(rpe_entries.get(activity.activity_id).srpe for activity in activities if activity.activity_id in rpe_entries)
+    total_srpe = sum(_resolved_srpe(activity, rpe_entries.get(activity.activity_id)) or 0.0 for activity in activities)
     meaningful_days = len(
         {
             activity.date
@@ -571,7 +572,7 @@ def weekly_summary_lines(
         f"Total duration: {_format_duration_minutes(total_duration)}",
         f"Total distance: {total_distance:.1f} km",
         f"Garmin activity load total: {total_garmin_load:.1f}",
-        f"Manual sRPE total: {total_srpe:.0f}",
+        f"Session RPE total: {total_srpe:.0f}",
         f"Kite sessions without HR: {len(missing_hr_kite)}",
     ]
 
@@ -593,7 +594,8 @@ def weekly_summary_lines(
     for activity in activities:
         rpe_entry = rpe_entries.get(activity.activity_id)
         hr_text = f"HR {activity.average_hr:.0f}" if activity.average_hr is not None else "HR missing"
-        srpe_text = f"sRPE {rpe_entry.srpe:.0f}" if rpe_entry is not None else "sRPE -"
+        resolved_srpe = _resolved_srpe(activity, rpe_entry)
+        srpe_text = f"sRPE {resolved_srpe:.0f}" if resolved_srpe is not None else "sRPE -"
         lines.append(
             f"- {activity.date} {activity.activity_type} {activity.duration_min} min | "
             f"{activity.distance_km or 0.0:.1f} km | Garmin load {(activity.garmin_load or 0.0):.1f} | "
@@ -609,15 +611,41 @@ def kite_history_lines(
     lines = [f"Kite sessions found: {len(kite_activities)}", ""]
     for activity in kite_activities:
         rpe_entry = rpe_entries.get(activity.activity_id)
+        resolved_rpe = _resolved_rpe(activity, rpe_entry)
+        resolved_srpe = _resolved_srpe(activity, rpe_entry)
+        rpe_source = _resolved_rpe_source(activity, rpe_entry)
+        source_text = f" ({rpe_source})" if rpe_source else ""
         notes = f" | notes: {rpe_entry.notes}" if rpe_entry and rpe_entry.notes else ""
         lines.append(
             f"- {activity.date} {activity.duration_min} min | {activity.distance_km or 0.0:.1f} km | "
             f"Garmin load {(activity.garmin_load or 0.0):.1f} | intensity {activity.total_intensity_minutes} | "
             f"{'HR missing' if not activity.has_hr_data else f'HR {activity.average_hr:.0f}'} | "
-            f"RPE {_format_number(rpe_entry.rpe) if rpe_entry else '-'} | "
-            f"sRPE {_format_number(rpe_entry.srpe) if rpe_entry else '-'}{notes}"
+            f"RPE {_format_number(resolved_rpe) if resolved_rpe is not None else '-'}{source_text} | "
+            f"sRPE {_format_number(resolved_srpe) if resolved_srpe is not None else '-'}{notes}"
         )
     return lines
+
+
+def _resolved_rpe(activity: GarminActivity, rpe_entry: RpeEntry | None) -> float | None:
+    if rpe_entry is not None:
+        return rpe_entry.rpe
+    return activity.garmin_rpe
+
+
+def _resolved_srpe(activity: GarminActivity, rpe_entry: RpeEntry | None) -> float | None:
+    if rpe_entry is not None:
+        return rpe_entry.srpe
+    if activity.garmin_rpe is None:
+        return None
+    return float(calculate_srpe(activity.duration_min, activity.garmin_rpe))
+
+
+def _resolved_rpe_source(activity: GarminActivity, rpe_entry: RpeEntry | None) -> str | None:
+    if rpe_entry is not None:
+        return "CSV override"
+    if activity.garmin_rpe is not None:
+        return "Garmin"
+    return None
 
 
 def _hours(seconds: object) -> float | None:

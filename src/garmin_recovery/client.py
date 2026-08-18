@@ -51,6 +51,8 @@ class GarminActivity:
     average_hr: float | None = None
     max_hr: float | None = None
     garmin_load: float | None = None
+    garmin_rpe: float | None = None
+    garmin_subjective_feeling: str | None = None
     training_effect_label: str | None = None
     moderate_intensity_minutes: int | None = None
     vigorous_intensity_minutes: int | None = None
@@ -167,6 +169,25 @@ def enrich_activity_from_detail(
         calories=float(summary["calories"]) if summary.get("calories") is not None else activity.calories,
         start_local=str(summary.get("startTimeLocal") or activity.start_local),
         date=str(summary.get("startTimeLocal", "")[:10] or activity.date),
+    )
+
+
+def enrich_activity_from_activity_summary(
+    activity: GarminActivity, activity_payload: dict[str, Any]
+) -> GarminActivity:
+    summary = activity_payload.get("summaryDTO", {})
+    direct_workout_rpe = summary.get("directWorkoutRpe")
+    garmin_rpe = (
+        round(float(direct_workout_rpe) / 10, 1)
+        if direct_workout_rpe is not None
+        else None
+    )
+
+    return replace(
+        activity,
+        garmin_rpe=garmin_rpe,
+        garmin_subjective_feeling=str(summary.get("subjectiveFeeling") or "") or None,
+        description=str(activity_payload.get("description") or activity.description),
     )
 
 
@@ -308,6 +329,13 @@ class GarminMcpClient:
         return activities
 
     async def enrich_activity(self, activity: GarminActivity) -> GarminActivity:
+        try:
+            activity_summary = await self.get_activity_summary(activity.activity_id)
+        except GarminMcpToolError:
+            activity_summary = None
+        else:
+            activity = enrich_activity_from_activity_summary(activity, activity_summary)
+
         try:
             detail_payload = await self.get_activity_details(activity.activity_id)
         except GarminMcpToolError:
