@@ -252,8 +252,8 @@ You can also run on-demand recovery reports from Telegram by sending commands to
 
 Recommended setup:
 
-- use a direct chat with the bot
-- allow only your trusted Telegram user ID and chat ID
+- use either a direct chat with the bot or a small private group
+- allow only trusted Telegram chat IDs
 - keep the listener local on the Hetzner VM
 
 Install the listener env:
@@ -267,10 +267,16 @@ Example:
 
 ```text
 TELEGRAM_BOT_TOKEN=123456:abc
-TELEGRAM_COMMAND_ALLOWED_USER_IDS=123456789
-TELEGRAM_COMMAND_ALLOWED_CHAT_IDS=123456789
+TELEGRAM_COMMAND_ALLOWED_CHAT_IDS=123456789,-1001234567890
 TELEGRAM_COMMAND_SKIP_EXISTING_UPDATES=true
 ```
+
+Notes:
+
+- `TELEGRAM_COMMAND_ALLOWED_CHAT_IDS` is the main safety control for `/andrei` and `/vika`
+- you can include your direct chat ID, a private group ID, or both
+- if the bot works in direct chat but not in a private group, make sure that group's `chat_id` is listed here
+- the same bot can still send scheduled notifications to the profile `TELEGRAM_CHAT_ID` values
 
 Install and start the listener service:
 
